@@ -19,7 +19,13 @@ jobs:
         with:
           node-version: "24"
           cache: npm
-          cache-dependency-path: desktop/package-lock.json
+          cache-dependency-path: |
+            package-lock.json
+            desktop/package-lock.json
+
+      # desktop 的类型检查透读根目录 src/（Harness 源码），需先装根依赖
+      - name: Install harness dependencies (repo root)
+        run: npm install --no-audit --no-fund
 
       - name: Install desktop dependencies
         working-directory: desktop
