@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "HCode 桌面端 —— Harness 的第三张面（Electron + React）",
+  "main": "out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
