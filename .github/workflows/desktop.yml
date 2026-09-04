@@ -25,7 +25,7 @@ jobs:
 
       # desktop 的类型检查透读根目录 src/（Harness 源码），需先装根依赖
       - name: Install harness dependencies (repo root)
-        run: npm install --no-audit --no-fund
+        run: npm install --no-audit --no-fund --ignore-scripts
 
       - name: Install desktop dependencies
         working-directory: desktop
