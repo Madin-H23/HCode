@@ -4,6 +4,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createHarnessBridge, type HarnessBridge, type WorkspacePickResult } from "./bridge";
 import { armDebugMockScript } from "./test-hooks";
+import { SessionManager } from "../../../src/session/manager.js";
+import { sessionsDir } from "../../../src/config/loader.js";
+import { textOf } from "../renderer/src/chat";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -95,6 +98,26 @@ function registerIpc(): void {
     if (!current) throw new Error("尚未选择工作区");
     await startSession(current, { mode: "new" });
     return { ok: true as const };
+  });
+
+  ipcMain.handle("hcode/session/list", () => {
+    return {
+      sessions: new SessionManager(sessionsDir()).list(),
+      currentSessionId: bridge?.status().sessionId ?? null,
+    };
+  });
+
+  ipcMain.handle("hcode/session/attach", async (_e, id: unknown) => {
+    if (typeof id !== "string" || id.length === 0) throw new Error("需要会话 id");
+    const summary = new SessionManager(sessionsDir())
+      .list()
+      .find((s) => s.id === id);
+    if (!summary) throw new Error(`找不到会话：${id}`);
+    await startSession(summary.cwd, { mode: "attach", id });
+    const history = (bridge?.harness.runtime.agent.state.messages ?? [])
+      .filter((m) => m.role === "user" || m.role === "assistant")
+      .map((m) => ({ role: m.role as "user" | "assistant", text: textOf(m) }));
+    return { ok: true as const, projectRoot: summary.cwd, history };
   });
 
   ipcMain.handle("hcode/permission/respond", async (_e, payload: unknown) => {

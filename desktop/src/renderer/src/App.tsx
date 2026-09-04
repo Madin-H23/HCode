@@ -151,6 +151,16 @@ const stateLabel = (state: CardState, durationMs?: number): string => {
   }
 }
 
+interface SessionEntry {
+  id: string
+  createdAt: string
+  modifiedAt: string
+  cwd: string
+  model: string
+  title?: string
+  messageCount: number
+}
+
 export default function App() {
   const [status, setStatus] = useState<BridgeStatus | null>(null)
   const [workspace, setWorkspace] = useState<string | null>(null)
@@ -159,6 +169,8 @@ export default function App() {
   const [input, setInput] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [permissions, setPermissions] = useState<PermissionRequestPayload[]>([])
+  const [sessions, setSessions] = useState<SessionEntry[]>([])
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null)
   const chatRef = useRef<ChatState>(initialChatState)
   const messagesRef = useRef<HTMLDivElement>(null)
 
@@ -179,6 +191,7 @@ export default function App() {
     )
     void window.hcode.status().then((s) => s && setWorkspace(s.projectRoot))
     void window.hcode.recentWorkspaces().then((r) => setRecents(r.recents))
+    void loadSessions()
     return () => {
       offEvent()
       offStatus()
@@ -186,6 +199,16 @@ export default function App() {
       offPermission()
     }
   }, [])
+
+  const loadSessions = (): void => {
+    void window.hcode
+      .listSessions()
+      .then((r) => {
+        setSessions(r.sessions)
+        setCurrentSessionId(r.currentSessionId)
+      })
+      .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)))
+  }
 
   const respond = (request: PermissionRequestPayload, outcome: PromptOutcome): void => {
     setPermissions((prev) => prev.filter((p) => p.id !== request.id))
@@ -240,9 +263,31 @@ export default function App() {
 
   const newSession = (): void => {
     setError(null)
-    void window.hcode.newSession().catch((err: unknown) =>
-      setError(err instanceof Error ? err.message : String(err)),
-    )
+    void window.hcode
+      .newSession()
+      .then(() => loadSessions())
+      .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)))
+  }
+
+  const attachSession = (id: string): void => {
+    if (!id) return
+    setError(null)
+    void window.hcode
+      .attachSession(id)
+      .then((r) => {
+        setWorkspace(r.projectRoot)
+        const historyItems: ChatItem[] = r.history.map((m, i) => ({
+          kind: "message",
+          id: i + 1,
+          role: m.role,
+          text: m.text,
+          streaming: false,
+        }))
+        chatRef.current = { items: historyItems, nextId: historyItems.length + 1 }
+        setItems(historyItems)
+        loadSessions()
+      })
+      .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)))
   }
 
   const busy = status?.busy ?? false
@@ -256,7 +301,9 @@ export default function App() {
         </p>
         <p style={styles.status} data-testid="status">
           {status
-            ? `${busy ? "busy" : "idle"} · ${status.model} · 权限 ${status.permissionMode}`
+            ? `${busy ? "busy" : "idle"} · ${status.model} · 权限 ${status.permissionMode} · ${
+                currentSessionId ? `会话 ${currentSessionId.slice(0, 8)}` : "无会话"
+              }`
             : "未装配"}
         </p>
       </header>
@@ -272,6 +319,23 @@ export default function App() {
           onClick={newSession}
         >
           新会话
+        </button>
+        <select
+          style={{ ...styles.button, maxWidth: 300 }}
+          data-testid="session-select"
+          disabled={busy}
+          value=""
+          onChange={(e) => attachSession(e.target.value)}
+        >
+          <option value="">恢复会话…</option>
+          {sessions.map((s) => (
+            <option key={s.id} value={s.id}>
+              {`${s.title ?? "(无标题)"} · ${new Date(s.modifiedAt).toLocaleString()} · ${s.cwd}`}
+            </option>
+          ))}
+        </select>
+        <button style={styles.button} data-testid="sessions-refresh" disabled={busy} onClick={loadSessions}>
+          刷新
         </button>
         {recents.map((ws) => (
           <button

@@ -23,6 +23,12 @@ const api = {
   recentWorkspaces: (): Promise<{ recents: string[] }> =>
     ipcRenderer.invoke("hcode/workspace/recent"),
   newSession: (): Promise<{ ok: boolean }> => ipcRenderer.invoke("hcode/session/new"),
+  listSessions: (): Promise<{ sessions: unknown[]; currentSessionId: string | null }> =>
+    ipcRenderer.invoke("hcode/session/list"),
+  attachSession: (
+    id: string
+  ): Promise<{ ok: boolean; projectRoot: string; history: Array<{ role: 'user' | 'assistant'; text: string }> }> =>
+    ipcRenderer.invoke("hcode/session/attach", id),
   respondPermission: (id: number, outcome: PromptOutcome): Promise<void> =>
     ipcRenderer.invoke("hcode/permission/respond", { id, outcome }),
   onAgentEvent: (cb: (payload: EventEnvelope) => void): (() => void) => {

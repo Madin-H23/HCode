@@ -119,3 +119,45 @@ test('E2E 冒烟 ③：权限 ASK 对话框 round-trip（once / always / Esc=den
     await app.close()
   }
 })
+
+test('E2E 冒烟 ④：会话面——列表/新建/attach 恢复/继续追问', async () => {
+  const { app, win, home } = await launchApp()
+  try {
+    // 第一轮：产生历史
+    await win.getByTestId('input').fill('第一轮对话')
+    await win.getByTestId('send').click()
+    await expect(win.getByTestId('messages')).toContainText('（mock）收到：「第一轮对话」', {
+      timeout: 20000
+    })
+    const jsonlBefore = fs.readdirSync(path.join(home, 'sessions')).filter((f) => f.endsWith('.jsonl'))
+    expect(jsonlBefore.length).toBe(1)
+
+    // 新建：当前消息清空
+    await win.getByTestId('new-session').click()
+    await expect(win.getByTestId('messages')).toContainText('向 Agent 描述你的任务', { timeout: 10000 })
+
+    // attach：按标题选中带历史的会话（new-session 产生的空会话也在列表里）
+    await win.getByTestId('session-select').selectOption(
+      (await win
+        .getByTestId('session-select')
+        .locator('option', { hasText: '第一轮对话' })
+        .getAttribute('value'))!
+    )
+    await expect(win.getByTestId('messages')).toContainText('（mock）收到：「第一轮对话」', {
+      timeout: 15000
+    })
+
+    // 继续追问：追加写同一 JSONL（不新建文件）
+    await win.getByTestId('input').fill('第二轮追问')
+    await win.getByTestId('send').click()
+    await expect(win.getByTestId('messages')).toContainText('（mock）收到：「第二轮追问」', {
+      timeout: 20000
+    })
+    const jsonlAfter = fs.readdirSync(path.join(home, 'sessions')).filter((f) => f.endsWith('.jsonl'))
+    // 追加写回 attach 的那个 JSONL；新增的唯一文件是 new-session 的空会话
+    expect(jsonlAfter).toHaveLength(2)
+    expect(jsonlAfter).toContain(jsonlBefore[0]!)
+  } finally {
+    await app.close()
+  }
+})

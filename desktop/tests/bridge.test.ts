@@ -137,6 +137,28 @@ describe("HarnessBridge（主进程桥）", () => {
     expect(fs.existsSync(path.join(workdir, "denied.txt"))).toBe(false);
   }, 30000);
 
+  it("attach：新桥恢复历史转录（桌面端会话面依赖）", async () => {
+    const first = await createHarnessBridge(
+      { projectRoot: workdir, mock: true, session: { mode: "new" } },
+      { onEvent: () => {}, onStatus: () => {} },
+    );
+    first.armMockScript("第一轮");
+    await first.prompt("第一轮对话");
+    const sessionId = first.status().sessionId!;
+    expect(sessionId).toBeTruthy();
+    await first.dispose();
+
+    const second = await createHarnessBridge(
+      { projectRoot: workdir, mock: true, session: { mode: "attach", id: sessionId } },
+      { onEvent: () => {}, onStatus: () => {} },
+    );
+    cleanups.push(second.harness.shutdown());
+    const messages = second.harness.runtime.agent.state.messages;
+    expect(messages.length).toBeGreaterThan(0);
+    const userTexts = messages.filter((m) => m.role === "user").map((m) => JSON.stringify(m.content));
+    expect(userTexts.some((t) => t.includes("第一轮对话"))).toBe(true);
+  }, 30000);
+
   it("always：同族请求第二次不再弹对话框", async () => {
     const perms: PermissionRequestPayload[] = [];
     const bridge = await createHarnessBridge(

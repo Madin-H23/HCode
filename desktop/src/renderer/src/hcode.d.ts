@@ -14,6 +14,23 @@ export interface HcodeApi {
   openWorkspace(workspace: string): Promise<WorkspacePickResult>;
   recentWorkspaces(): Promise<{ recents: string[] }>;
   newSession(): Promise<{ ok: boolean }>;
+  listSessions(): Promise<{
+    sessions: Array<{
+      id: string;
+      createdAt: string;
+      modifiedAt: string;
+      cwd: string;
+      model: string;
+      title?: string;
+      messageCount: number;
+    }>;
+    currentSessionId: string | null;
+  }>;
+  attachSession(id: string): Promise<{
+    ok: boolean;
+    projectRoot: string;
+    history: Array<{ role: 'user' | 'assistant'; text: string }>;
+  }>;
   respondPermission(id: number, outcome: PromptOutcome): Promise<void>;
   onAgentEvent(cb: (payload: EventEnvelope) => void): () => void;
   onStatus(cb: (payload: BridgeStatus) => void): () => void;
