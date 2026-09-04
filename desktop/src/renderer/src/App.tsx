@@ -112,7 +112,7 @@ export default function App() {
   const [input, setInput] = useState("")
   const [error, setError] = useState<string | null>(null)
   const nextId = useRef(1)
-  const logRef = useRef<HTMLDivElement>(null)
+  const messagesRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const offEvent = window.hcode.onAgentEvent((payload: AgentEventEnvelope) => {
@@ -165,7 +165,7 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    logRef.current?.scrollTo({ top: logRef.current.scrollHeight })
+    messagesRef.current?.scrollTo({ top: messagesRef.current.scrollHeight })
   }, [messages])
 
   const send = (): void => {
@@ -228,13 +228,20 @@ export default function App() {
           新会话
         </button>
         {recents.map((ws) => (
-          <button key={ws} style={styles.chip} data-testid="recent" title={ws} onClick={() => openRecent(ws)}>
+          <button
+            key={ws}
+            style={styles.chip}
+            data-testid="recent"
+            title={ws}
+            disabled={busy}
+            onClick={() => openRecent(ws)}
+          >
             {ws}
           </button>
         ))}
       </div>
 
-      <div style={styles.messages} data-testid="messages" ref={logRef}>
+      <div style={styles.messages} data-testid="messages" ref={messagesRef}>
         {messages.length === 0 && (
           <p style={styles.placeholder}>
             {workspace ? "向 Agent 描述你的任务…" : "选择工作区后，Agent 在该项目内工作。"}
@@ -268,7 +275,7 @@ export default function App() {
           disabled={!workspace || busy}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
+            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
               e.preventDefault()
               send()
             }

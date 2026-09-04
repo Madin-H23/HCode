@@ -1,15 +1,10 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from "electron";
-import type { BridgeStatus, EventEnvelope } from "../main/bridge";
+import type { BridgeStatus, EventEnvelope, WorkspacePickResult } from "../main/bridge";
 
 /**
  * typed 桥（SPEC IPC 契约的 preload 面）。类型直接取自主进程桥定义，编译期同源。
- * T3 新增 workspace/pick、workspace/recent、session/new 与 hcode:workspace 推送。
+ * T3 新增 workspace/pick、workspace/recent、workspace/open、session/new 与 hcode:workspace 推送。
  */
-export interface WorkspacePickResult {
-  ok: boolean;
-  projectRoot?: string;
-  recents: string[];
-}
 
 const api = {
   version: "0.3.0-desktop",

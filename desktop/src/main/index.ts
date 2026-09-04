@@ -2,7 +2,7 @@ import { app, BrowserWindow, dialog, ipcMain } from "electron";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { createHarnessBridge, type HarnessBridge } from "./bridge";
+import { createHarnessBridge, type HarnessBridge, type WorkspacePickResult } from "./bridge";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -42,6 +42,7 @@ async function startSession(
   projectRoot: string,
   session: { mode: "new" } | { mode: "attach"; id: string },
 ): Promise<void> {
+  if (bridge?.status().busy) throw new Error("Agent 正忙：请先停止当前任务");
   if (bridge) await bridge.dispose();
   const mock = process.env.TINYCODE_MODEL === "mock";
   bridge = await createHarnessBridge({ projectRoot, mock, session }, {
@@ -59,28 +60,32 @@ function requireBridge(): HarnessBridge {
 }
 
 function registerIpc(): void {
+  const finishOpen = async (projectRoot: string): Promise<WorkspacePickResult> => {
+    await startSession(projectRoot, { mode: "new" });
+    return { ok: true, projectRoot, recents: readRecents() };
+  };
+
   ipcMain.handle("hcode/workspace/pick", async () => {
     let picked: string | null;
     if (TEST_WORKSPACE) {
       picked = TEST_WORKSPACE;
     } else {
-      const result = await dialog.showOpenDialog(win!, {
+      if (!win) throw new Error("窗口未就绪");
+      const result = await dialog.showOpenDialog(win, {
         properties: ["openDirectory"],
         defaultPath: readRecents()[0],
       });
       picked = result.canceled ? null : (result.filePaths[0] ?? null);
     }
-    if (!picked) return { ok: false as const, recents: readRecents() };
-    await startSession(picked, { mode: "new" });
-    return { ok: true as const, projectRoot: picked, recents: readRecents() };
+    if (!picked) return { ok: false, recents: readRecents() };
+    return finishOpen(picked);
   });
 
   ipcMain.handle("hcode/workspace/recent", () => ({ recents: readRecents() }));
 
   ipcMain.handle("hcode/workspace/open", async (_e, workspace: unknown) => {
     if (typeof workspace !== "string" || workspace.length === 0) throw new Error("需要工作区路径");
-    await startSession(workspace, { mode: "new" });
-    return { ok: true as const, projectRoot: workspace, recents: readRecents() };
+    return finishOpen(workspace);
   });
 
   ipcMain.handle("hcode/session/new", async () => {
@@ -93,7 +98,7 @@ function registerIpc(): void {
   ipcMain.handle("hcode/prompt", async (_e, text: unknown) => {
     if (typeof text !== "string" || text.trim().length === 0) throw new Error("prompt 需要非空文本");
     const current = requireBridge();
-    if (current.harness.models.mockHandle) {
+    if (current.isMock) {
       current.armMockScript(`（mock）收到：「${text}」`);
     }
     await current.prompt(text);

@@ -1,14 +1,14 @@
-export type { BridgeStatus } from "../../main/bridge";
+export type { BridgeStatus, WorkspacePickResult } from "../../main/bridge";
 export type { EventEnvelope as AgentEventEnvelope } from "../../main/bridge";
-import type { BridgeStatus, EventEnvelope } from "../../main/bridge";
+import type { BridgeStatus, EventEnvelope, WorkspacePickResult } from "../../main/bridge";
 
 export interface HcodeApi {
   version: string;
   prompt(text: string): Promise<void>;
   abort(): Promise<void>;
   status(): Promise<BridgeStatus | null>;
-  pickWorkspace(): Promise<{ ok: boolean; projectRoot?: string; recents: string[] }>;
-  openWorkspace(workspace: string): Promise<{ ok: boolean; projectRoot?: string; recents: string[] }>;
+  pickWorkspace(): Promise<WorkspacePickResult>;
+  openWorkspace(workspace: string): Promise<WorkspacePickResult>;
   recentWorkspaces(): Promise<{ recents: string[] }>;
   newSession(): Promise<{ ok: boolean }>;
   onAgentEvent(cb: (payload: EventEnvelope) => void): () => void;

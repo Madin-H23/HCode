@@ -31,6 +31,8 @@ export interface HarnessBridge {
   prompt(text: string): Promise<void>;
   abort(): void;
   status(): BridgeStatus;
+  /** 当前是否 mock 模型装配（调试脚本注入口的判据）。 */
+  readonly isMock: boolean;
   /** mock 模式下注入一条脚本回复；非 mock 模型时抛错（绝不静默失效）。 */
   armMockScript(text: string): void;
   /** 释放 Harness（MCP/子代理等后台资源）。切换会话时必须先调用。 */
@@ -45,6 +47,12 @@ export interface DesktopHarnessOptions {
   modelFlag?: string;
   mock?: boolean;
   session?: { mode: "new" } | { mode: "attach"; id: string };
+}
+
+export interface WorkspacePickResult {
+  ok: boolean;
+  projectRoot?: string;
+  recents: string[];
 }
 
 function modelLabel(harness: Harness): string {
@@ -87,6 +95,10 @@ export async function createHarnessBridge(
 
   return {
     harness,
+
+    get isMock(): boolean {
+      return harness.models.mockHandle != null;
+    },
 
     async prompt(text: string): Promise<void> {
       if (busy) throw new Error("Agent 正忙：请先停止当前任务");
