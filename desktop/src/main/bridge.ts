@@ -1,6 +1,7 @@
 import type { AgentEvent } from "@earendil-works/pi-agent-core";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai";
-import { bootstrapHarness, type Harness } from "../../../src/bootstrap.js";
+import { buildHarnessFromCli } from "../../../src/cli/commands.js";
+import type { Harness } from "../../../src/bootstrap.js";
 
 /**
  * 主进程桥——桌面端唯一 seam（SPEC #1 Testing Decisions）。
@@ -30,14 +31,18 @@ export interface HarnessBridge {
   prompt(text: string): Promise<void>;
   abort(): void;
   status(): BridgeStatus;
-  /** T2 调试用：注入一条 mock 回复。非 mock 模型时抛错（绝不静默失效）。 */
+  /** mock 模式下注入一条脚本回复；非 mock 模型时抛错（绝不静默失效）。 */
   armMockScript(text: string): void;
+  /** 释放 Harness（MCP/子代理等后台资源）。切换会话时必须先调用。 */
+  dispose(): Promise<void>;
   /** 仅供测试/装配层访问底层 Harness（如 setPrompt、session 装配）。 */
   readonly harness: Harness;
 }
 
 export interface DesktopHarnessOptions {
   projectRoot: string;
+  /** 直接指定 provider/model；缺省走 TINYCODE_MODEL 环境变量与工作区 config 选择链。 */
+  modelFlag?: string;
   mock?: boolean;
   session?: { mode: "new" } | { mode: "attach"; id: string };
 }
@@ -52,10 +57,11 @@ export async function createHarnessBridge(
   options: DesktopHarnessOptions,
   sink: BridgeSink,
 ): Promise<HarnessBridge> {
-  const harness = await bootstrapHarness({
-    projectRoot: options.projectRoot,
-    config: { permissionMode: "ask" },
-    mock: options.mock ?? true,
+  const harness = await buildHarnessFromCli({
+    cwd: options.projectRoot,
+    modelFlag: options.modelFlag,
+    permissionMode: "ask",
+    mock: options.mock ?? false,
     session: options.session,
   });
 
@@ -67,7 +73,7 @@ export async function createHarnessBridge(
     model: modelLabel(harness),
     sessionId: harness.session?.id,
     projectRoot: harness.projectRoot,
-    permissionMode: harness.config.permissionMode ?? "ask",
+    permissionMode: harness.permissions.mode,
   });
 
   const emitStatus = (): void => {
@@ -104,6 +110,10 @@ export async function createHarnessBridge(
       const handle = harness.models.mockHandle;
       if (!handle) throw new Error("当前不是 mock 模型，无法注入调试脚本");
       handle.setResponses([fauxAssistantMessage(text)]);
+    },
+
+    dispose(): Promise<void> {
+      return harness.shutdown();
     },
   };
 }

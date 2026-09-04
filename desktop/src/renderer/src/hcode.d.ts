@@ -7,8 +7,13 @@ export interface HcodeApi {
   prompt(text: string): Promise<void>;
   abort(): Promise<void>;
   status(): Promise<BridgeStatus | null>;
+  pickWorkspace(): Promise<{ ok: boolean; projectRoot?: string; recents: string[] }>;
+  openWorkspace(workspace: string): Promise<{ ok: boolean; projectRoot?: string; recents: string[] }>;
+  recentWorkspaces(): Promise<{ recents: string[] }>;
+  newSession(): Promise<{ ok: boolean }>;
   onAgentEvent(cb: (payload: EventEnvelope) => void): () => void;
   onStatus(cb: (payload: BridgeStatus) => void): () => void;
+  onWorkspace(cb: (payload: { projectRoot: string }) => void): () => void;
 }
 
 declare global {

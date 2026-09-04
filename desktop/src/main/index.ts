@@ -1,9 +1,14 @@
-import { app, BrowserWindow, ipcMain } from "electron";
+import { app, BrowserWindow, dialog, ipcMain } from "electron";
+import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createHarnessBridge, type HarnessBridge } from "./bridge";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+// E2E 注入口：不出系统对话框、不写真实用户目录（仅测试环境变量存在时生效）。
+const TEST_WORKSPACE = process.env.HCODE_TEST_WORKSPACE;
+if (process.env.HCODE_TEST_USERDATA) app.setPath("userData", process.env.HCODE_TEST_USERDATA);
 
 let bridge: HarnessBridge | null = null;
 let win: BrowserWindow | null = null;
@@ -12,29 +17,92 @@ function send(channel: string, payload: unknown): void {
   win?.webContents.send(channel, payload);
 }
 
-async function bootstrapBridge(): Promise<void> {
-  // T2 以 mock 模型保底保证可启动；T3 接工作区选择后换成 buildHarnessFromCli 的模型选择链。
-  bridge = await createHarnessBridge(
-    { projectRoot: process.cwd(), mock: true },
-    {
-      onEvent: (envelope) => send("hcode:agent-event", envelope),
-      onStatus: (status) => send("hcode:status", status),
-    },
-  );
+function recentsPath(): string {
+  return path.join(app.getPath("userData"), "hcode-desktop.json");
+}
+
+function readRecents(): string[] {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(recentsPath(), "utf8")) as {
+      recentWorkspaces?: string[];
+    };
+    return parsed.recentWorkspaces ?? [];
+  } catch {
+    return [];
+  }
+}
+
+function pushRecent(workspace: string): void {
+  const list = [workspace, ...readRecents().filter((w) => w !== workspace)].slice(0, 10);
+  fs.mkdirSync(app.getPath("userData"), { recursive: true });
+  fs.writeFileSync(recentsPath(), JSON.stringify({ recentWorkspaces: list }));
+}
+
+async function startSession(
+  projectRoot: string,
+  session: { mode: "new" } | { mode: "attach"; id: string },
+): Promise<void> {
+  if (bridge) await bridge.dispose();
+  const mock = process.env.TINYCODE_MODEL === "mock";
+  bridge = await createHarnessBridge({ projectRoot, mock, session }, {
+    onEvent: (envelope) => send("hcode:agent-event", envelope),
+    onStatus: (status) => send("hcode:status", status),
+  });
+  pushRecent(projectRoot);
+  send("hcode:workspace", { projectRoot });
+  send("hcode:status", bridge.status());
+}
+
+function requireBridge(): HarnessBridge {
+  if (!bridge) throw new Error("尚未选择工作区");
+  return bridge;
 }
 
 function registerIpc(): void {
+  ipcMain.handle("hcode/workspace/pick", async () => {
+    let picked: string | null;
+    if (TEST_WORKSPACE) {
+      picked = TEST_WORKSPACE;
+    } else {
+      const result = await dialog.showOpenDialog(win!, {
+        properties: ["openDirectory"],
+        defaultPath: readRecents()[0],
+      });
+      picked = result.canceled ? null : (result.filePaths[0] ?? null);
+    }
+    if (!picked) return { ok: false as const, recents: readRecents() };
+    await startSession(picked, { mode: "new" });
+    return { ok: true as const, projectRoot: picked, recents: readRecents() };
+  });
+
+  ipcMain.handle("hcode/workspace/recent", () => ({ recents: readRecents() }));
+
+  ipcMain.handle("hcode/workspace/open", async (_e, workspace: unknown) => {
+    if (typeof workspace !== "string" || workspace.length === 0) throw new Error("需要工作区路径");
+    await startSession(workspace, { mode: "new" });
+    return { ok: true as const, projectRoot: workspace, recents: readRecents() };
+  });
+
+  ipcMain.handle("hcode/session/new", async () => {
+    const current = bridge?.status().projectRoot;
+    if (!current) throw new Error("尚未选择工作区");
+    await startSession(current, { mode: "new" });
+    return { ok: true as const };
+  });
+
   ipcMain.handle("hcode/prompt", async (_e, text: unknown) => {
-    if (typeof text !== "string" || text.length === 0) throw new Error("prompt 需要非空文本");
-    if (!bridge) throw new Error("桥未就绪");
-    // T2 调试脚本：每次注入一条 mock 回复驱动真实循环（T3 由模型选择链替换）。
-    bridge.armMockScript(`HCode 桥路测试：已收到「${text}」`);
-    await bridge.prompt(text);
+    if (typeof text !== "string" || text.trim().length === 0) throw new Error("prompt 需要非空文本");
+    const current = requireBridge();
+    if (current.harness.models.mockHandle) {
+      current.armMockScript(`（mock）收到：「${text}」`);
+    }
+    await current.prompt(text);
   });
+
   ipcMain.handle("hcode/abort", () => {
-    if (!bridge) throw new Error("桥未就绪");
-    bridge.abort();
+    requireBridge().abort();
   });
+
   ipcMain.handle("hcode/status", () => bridge?.status() ?? null);
 }
 
@@ -65,20 +133,15 @@ function createWindow(): void {
   }
 }
 
-app.whenReady().then(async () => {
+app.whenReady().then(() => {
   registerIpc();
   createWindow();
-  try {
-    await bootstrapBridge();
-  } catch (err) {
-    console.error("[hcode] Harness 装配失败:", err);
-  }
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
 });
 
 app.on("window-all-closed", () => {
-  void bridge?.harness.shutdown();
+  void bridge?.dispose();
   if (process.platform !== "darwin") app.quit();
 });
