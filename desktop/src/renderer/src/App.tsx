@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react"
-import type { AgentEventEnvelope, BridgeStatus, PermissionRequestPayload, PromptOutcome } from "./hcode.d"
+import type { AgentEventEnvelope, BridgeStatus, PermissionRequestPayload, PromptOutcome, SessionSummary } from "./hcode.d"
 import { initialChatState, reduceChatEvent, type ChatItem, type ChatState } from "./chat"
 
 const styles = {
@@ -151,16 +151,6 @@ const stateLabel = (state: CardState, durationMs?: number): string => {
   }
 }
 
-interface SessionEntry {
-  id: string
-  createdAt: string
-  modifiedAt: string
-  cwd: string
-  model: string
-  title?: string
-  messageCount: number
-}
-
 export default function App() {
   const [status, setStatus] = useState<BridgeStatus | null>(null)
   const [workspace, setWorkspace] = useState<string | null>(null)
@@ -169,7 +159,7 @@ export default function App() {
   const [input, setInput] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [permissions, setPermissions] = useState<PermissionRequestPayload[]>([])
-  const [sessions, setSessions] = useState<SessionEntry[]>([])
+  const [sessions, setSessions] = useState<SessionSummary[]>([])
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null)
   const chatRef = useRef<ChatState>(initialChatState)
   const messagesRef = useRef<HTMLDivElement>(null)

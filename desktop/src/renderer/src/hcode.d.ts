@@ -2,8 +2,10 @@ export type { BridgeStatus, WorkspacePickResult } from "../../main/bridge";
 export type { EventEnvelope as AgentEventEnvelope } from "../../main/bridge";
 export type { PermissionRequestPayload } from "../../main/bridge";
 export type { PromptOutcome } from "../../../src/permissions/manager";
+export type { SessionSummary } from "../../../src/session/types";
 import type { BridgeStatus, EventEnvelope, PermissionRequestPayload } from "../../main/bridge";
 import type { PromptOutcome } from "../../../src/permissions/manager";
+import type { SessionSummary } from "../../../src/session/types";
 
 export interface HcodeApi {
   version: string;
@@ -14,18 +16,7 @@ export interface HcodeApi {
   openWorkspace(workspace: string): Promise<WorkspacePickResult>;
   recentWorkspaces(): Promise<{ recents: string[] }>;
   newSession(): Promise<{ ok: boolean }>;
-  listSessions(): Promise<{
-    sessions: Array<{
-      id: string;
-      createdAt: string;
-      modifiedAt: string;
-      cwd: string;
-      model: string;
-      title?: string;
-      messageCount: number;
-    }>;
-    currentSessionId: string | null;
-  }>;
+  listSessions(): Promise<{ sessions: SessionSummary[]; currentSessionId: string | null }>;
   attachSession(id: string): Promise<{
     ok: boolean;
     projectRoot: string;
