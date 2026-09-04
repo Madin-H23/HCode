@@ -1,7 +1,6 @@
 import { app, BrowserWindow, ipcMain } from "electron";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { fauxAssistantMessage } from "@earendil-works/pi-ai";
 import { createHarnessBridge, type HarnessBridge } from "./bridge";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -29,13 +28,12 @@ function registerIpc(): void {
     if (typeof text !== "string" || text.length === 0) throw new Error("prompt 需要非空文本");
     if (!bridge) throw new Error("桥未就绪");
     // T2 调试脚本：每次注入一条 mock 回复驱动真实循环（T3 由模型选择链替换）。
-    bridge.harness.models.mockHandle?.setResponses([
-      fauxAssistantMessage(`HCode 桥路测试：已收到「${text}」`),
-    ]);
+    bridge.armMockScript(`HCode 桥路测试：已收到「${text}」`);
     await bridge.prompt(text);
   });
   ipcMain.handle("hcode/abort", () => {
-    bridge?.abort();
+    if (!bridge) throw new Error("桥未就绪");
+    bridge.abort();
   });
   ipcMain.handle("hcode/status", () => bridge?.status() ?? null);
 }

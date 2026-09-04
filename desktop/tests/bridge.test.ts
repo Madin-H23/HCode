@@ -64,4 +64,26 @@ describe("HarnessBridge（主进程桥）", () => {
     expect(status.projectRoot).toBe(workdir);
     expect(status.model).not.toBe("");
   }, 30000);
+
+  it("abort 经桥可达：idle 安全调用；生成中调用循环照常收尾且 busy 归零", async () => {
+    const events: EventEnvelope[] = [];
+    const statuses: BridgeStatus[] = [];
+    const bridge = await createHarnessBridge(
+      { projectRoot: workdir, mock: true },
+      { onEvent: (e) => events.push(e), onStatus: (s) => statuses.push(s) },
+    );
+    const { harness } = bridge;
+    cleanups.push(harness.shutdown());
+
+    expect(() => bridge.abort()).not.toThrow();
+
+    harness.models.mockHandle!.setResponses([fauxAssistantMessage("会被尝试打断的一条")]);
+    const run = bridge.prompt("打断我");
+    bridge.abort();
+    await expect(run).resolves.toBeUndefined();
+
+    const types = events.map((e) => e.event.type);
+    expect(types).toContain("agent_end");
+    expect(statuses.at(-1)!.busy).toBe(false);
+  }, 30000);
 });
