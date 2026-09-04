@@ -57,6 +57,8 @@ test('E2E 冒烟 ①：选工作区 → 发消息 → 流式回复定稿', async
     // 会话落盘：JSONL 真相源已在 TINYCODE_HOME/sessions 下生成
     const sessions = fs.readdirSync(path.join(home, 'sessions'))
     expect(sessions.some((f) => f.endsWith('.jsonl'))).toBe(true)
+    // T7：索引层随列表查询建立
+    expect(sessions).toContain('index.db')
   } finally {
     await app.close()
   }

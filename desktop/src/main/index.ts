@@ -7,6 +7,7 @@ import { armDebugMockScript } from "./test-hooks";
 import { SessionManager } from "../../../src/session/manager.js";
 import { sessionsDir } from "../../../src/config/loader.js";
 import { textOf } from "../renderer/src/chat";
+import { SessionIndex } from "./session-index";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -16,6 +17,11 @@ if (process.env.HCODE_TEST_USERDATA) app.setPath("userData", process.env.HCODE_T
 
 let bridge: HarnessBridge | null = null;
 let win: BrowserWindow | null = null;
+let index: SessionIndex | null = null;
+
+function upstreamSessionList() {
+  return new SessionManager(sessionsDir()).list();
+}
 
 function send(channel: string, payload: unknown): void {
   win?.webContents.send(channel, payload);
@@ -101,8 +107,11 @@ function registerIpc(): void {
   });
 
   ipcMain.handle("hcode/session/list", () => {
+    // ADR-0002：上游 list() 是唯一真相源；每次列表都经「rebuild→查询」保证与 JSONL 一致。
+    const truth = upstreamSessionList();
+    index?.rebuild(truth);
     return {
-      sessions: new SessionManager(sessionsDir()).list(),
+      sessions: index?.list() ?? truth,
       currentSessionId: bridge?.status().sessionId ?? null,
     };
   });
@@ -173,6 +182,12 @@ function createWindow(): void {
 app.whenReady().then(() => {
   registerIpc();
   createWindow();
+  try {
+    fs.mkdirSync(sessionsDir(), { recursive: true });
+    index = new SessionIndex(path.join(sessionsDir(), "index.db"));
+  } catch (err) {
+    console.error("[hcode] 索引层不可用，列表回退上游 list():", err);
+  }
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
@@ -180,5 +195,6 @@ app.whenReady().then(() => {
 
 app.on("window-all-closed", () => {
   void bridge?.dispose();
+  index?.close();
   if (process.platform !== "darwin") app.quit();
 });
