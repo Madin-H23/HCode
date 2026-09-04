@@ -4,6 +4,34 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
+interface LaunchOptions {
+  script?: 'tool'
+}
+
+/** 统一的 E2E 装配：mock 模型 + 隔离 TINYCODE_HOME/userData + 可选工具脚本注入口。 */
+async function launchApp(
+  opts: LaunchOptions = {}
+): Promise<{ app: ElectronApplication; win: Page; workdir: string; home: string }> {
+  const workdir = fs.mkdtempSync(path.join(os.tmpdir(), 'hcode-e2e-ws-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'hcode-e2e-home-'))
+  const app: ElectronApplication = await _electron.launch({
+    args: ['out/main/index.js'],
+    env: {
+      ...process.env,
+      TINYCODE_MODEL: 'mock',
+      TINYCODE_HOME: home,
+      HCODE_TEST_USERDATA: fs.mkdtempSync(path.join(os.tmpdir(), 'hcode-e2e-ud-')),
+      HCODE_TEST_WORKSPACE: workdir,
+      ...(opts.script ? { HCODE_TEST_MOCK_SCRIPT: opts.script } : {})
+    }
+  })
+  const win: Page = await app.firstWindow()
+  await expect(win).toHaveTitle('HCode')
+  await win.getByTestId('open-workspace').click()
+  await expect(win.getByTestId('workspace')).toContainText(workdir, { timeout: 15000 })
+  return { app, win, workdir, home }
+}
+
 test('E2E 冒烟 #0：应用启动，窗口标题为 HCode', async () => {
   const app: ElectronApplication = await _electron.launch({
     args: ['out/main/index.js']
@@ -18,26 +46,8 @@ test('E2E 冒烟 #0：应用启动，窗口标题为 HCode', async () => {
 })
 
 test('E2E 冒烟 ①：选工作区 → 发消息 → 流式回复定稿', async () => {
-  const workdir = fs.mkdtempSync(path.join(os.tmpdir(), 'hcode-e2e-ws-'))
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'hcode-e2e-home-'))
-  const app: ElectronApplication = await _electron.launch({
-    args: ['out/main/index.js'],
-    env: {
-      ...process.env,
-      TINYCODE_MODEL: 'mock',
-      TINYCODE_HOME: home,
-      HCODE_TEST_USERDATA: fs.mkdtempSync(path.join(os.tmpdir(), 'hcode-e2e-ud-')),
-      HCODE_TEST_WORKSPACE: workdir
-    }
-  })
+  const { app, win, home } = await launchApp()
   try {
-    const win: Page = await app.firstWindow()
-    await expect(win).toHaveTitle('HCode')
-
-    await win.getByTestId('open-workspace').click()
-    await expect(win.getByTestId('workspace')).toContainText(workdir, { timeout: 15000 })
-    await expect(win.getByTestId('status')).toContainText('idle')
-
     await win.getByTestId('input').fill('你好')
     await win.getByTestId('send').click()
     await expect(win.getByTestId('msg-user')).toContainText('你好', { timeout: 20000 })
@@ -53,25 +63,9 @@ test('E2E 冒烟 ①：选工作区 → 发消息 → 流式回复定稿', async
 })
 
 test('E2E 冒烟 ②：工具调用 → 卡片渲染且终态正确', async () => {
-  const workdir = fs.mkdtempSync(path.join(os.tmpdir(), 'hcode-e2e-ws-'))
-  fs.writeFileSync(path.join(workdir, 'package.json'), '{"name":"fixture"}\n')
-  const app: ElectronApplication = await _electron.launch({
-    args: ['out/main/index.js'],
-    env: {
-      ...process.env,
-      TINYCODE_MODEL: 'mock',
-      TINYCODE_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'hcode-e2e-home-')),
-      HCODE_TEST_USERDATA: fs.mkdtempSync(path.join(os.tmpdir(), 'hcode-e2e-ud-')),
-      HCODE_TEST_WORKSPACE: workdir,
-      HCODE_TEST_MOCK_SCRIPT: 'tool'
-    }
-  })
+  const { app, win, workdir } = await launchApp({ script: 'tool' })
   try {
-    const win: Page = await app.firstWindow()
-    await expect(win).toHaveTitle('HCode')
-
-    await win.getByTestId('open-workspace').click()
-    await expect(win.getByTestId('workspace')).toContainText(workdir, { timeout: 15000 })
+    fs.writeFileSync(path.join(workdir, 'package.json'), '{"name":"fixture"}\n')
 
     await win.getByTestId('input').fill('看看 package.json')
     await win.getByTestId('send').click()

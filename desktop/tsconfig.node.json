@@ -17,6 +17,7 @@
     "vitest.config.ts",
     "src/main/**/*.ts",
     "src/preload/**/*.ts",
+    "src/renderer/src/chat.ts",
     "e2e/**/*.ts",
     "tests/**/*.ts"
   ]

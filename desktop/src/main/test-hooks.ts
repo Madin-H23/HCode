@@ -1,0 +1,19 @@
+import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
+import type { HarnessBridge } from "./bridge";
+
+/**
+ * E2E/开发调试注入口（仅 mock 装配下生效）。
+ * 与生产 IPC 装配分离：registerIpc 保持场景无关。
+ */
+export function armDebugMockScript(bridge: HarnessBridge, text: string): void {
+  if (!bridge.isMock) return;
+  if (process.env.HCODE_TEST_MOCK_SCRIPT === "tool") {
+    // 脚本化一次真实工具执行（read → 最终答复），驱动工具卡片渲染。
+    bridge.armMockMessages([
+      fauxAssistantMessage([fauxToolCall("read", { path: "package.json" })]),
+      fauxAssistantMessage("读取完成：package.json 已检查。"),
+    ]);
+  } else {
+    bridge.armMockScript(`（mock）收到：「${text}」`);
+  }
+}

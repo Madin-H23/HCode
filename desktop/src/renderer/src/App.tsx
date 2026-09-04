@@ -1,89 +1,6 @@
 import { useEffect, useRef, useState } from "react"
 import type { AgentEventEnvelope, BridgeStatus } from "./hcode.d"
-
-interface ChatMessage {
-  kind: "message"
-  id: number
-  role: "user" | "assistant"
-  text: string
-  streaming: boolean
-}
-
-interface ToolCard {
-  kind: "tool"
-  id: number
-  toolCallId: string
-  name: string
-  argsSummary: string
-  state: "running" | "ok" | "error" | "stopped"
-  detail?: string
-  durationMs?: number
-  startedAt: number
-}
-
-type ChatItem = ChatMessage | ToolCard
-
-/** pi 的 message.content：字符串或分块数组；只取 text 块（TUI 同款语义）。 */
-function textOf(message: unknown): string {
-  const content = (message as { content?: unknown } | undefined)?.content
-  if (typeof content === "string") return content
-  if (Array.isArray(content)) {
-    return content
-      .filter(
-        (block): block is { type: "text"; text: string } =>
-          typeof block === "object" &&
-          block !== null &&
-          (block as { type?: string }).type === "text",
-      )
-      .map((block) => block.text)
-      .join("")
-  }
-  return ""
-}
-
-function shorten(text: string, max = 60): string {
-  const flat = text.replace(/\s+/g, " ").trim()
-  return flat.length > max ? `${flat.slice(0, max)}…` : flat
-}
-
-/** 7 个内置工具的参数摘要（模型可见面的压缩版，细节属工具卡片详情）。 */
-function summarizeToolArgs(name: string, args: Record<string, unknown>): string {
-  switch (name) {
-    case "bash":
-      return shorten(String(args.command ?? ""))
-    case "read":
-    case "ls":
-      return String(args.path ?? "") + (args.offset != null ? ` (offset ${String(args.offset)})` : "")
-    case "write":
-      return `${String(args.path ?? "")}（${String(args.content ?? "").length} 字符）`
-    case "edit":
-      return `${String(args.path ?? "")}：${shorten(String(args.oldText ?? ""), 24)} → ${shorten(
-        String(args.newText ?? ""),
-        24,
-      )}`
-    case "grep":
-      return [args.pattern, args.include].filter((x) => x != null).map(String).join(" · ")
-    case "find":
-      return String(args.pattern ?? "")
-    default:
-      return shorten(JSON.stringify(args))
-  }
-}
-
-function extractToolText(result: unknown): string {
-  const content = (result as { content?: unknown } | undefined)?.content
-  if (typeof content === "string") return content
-  if (Array.isArray(content)) {
-    return content
-      .filter(
-        (block): block is { type: "text"; text: string } =>
-          typeof block === "object" && block !== null && (block as { type?: string }).type === "text",
-      )
-      .map((block) => block.text)
-      .join("")
-  }
-  return ""
-}
+import { initialChatState, reduceChatEvent, type ChatItem, type ChatState } from "./chat"
 
 const styles = {
   app: {
@@ -180,10 +97,12 @@ const styles = {
   errorLine: { color: "#ff7b72", fontSize: 12, padding: "0 16px 8px", margin: 0 },
 }
 
-const stateStyle = (state: ToolCard["state"]): (typeof styles)["ok" | "error" | "running" | "stopped"] =>
+type CardState = "running" | "ok" | "error" | "stopped"
+
+const stateStyle = (state: CardState): (typeof styles)["ok" | "error" | "running" | "stopped"] =>
   state === "ok" ? styles.ok : state === "error" ? styles.error : state === "stopped" ? styles.stopped : styles.running
 
-const stateLabel = (state: ToolCard["state"], durationMs?: number): string => {
+const stateLabel = (state: CardState, durationMs?: number): string => {
   const suffix = durationMs != null ? ` · ${(durationMs / 1000).toFixed(1)}s` : ""
   switch (state) {
     case "ok":
@@ -204,96 +123,18 @@ export default function App() {
   const [items, setItems] = useState<ChatItem[]>([])
   const [input, setInput] = useState("")
   const [error, setError] = useState<string | null>(null)
-  const nextId = useRef(1)
+  const chatRef = useRef<ChatState>(initialChatState)
   const messagesRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const offEvent = window.hcode.onAgentEvent((payload: AgentEventEnvelope) => {
-      const event = payload.event as {
-        type: string
-        message?: unknown
-        toolCallId?: string
-        toolName?: string
-        args?: Record<string, unknown>
-        result?: unknown
-        isError?: boolean
-      }
-      if (event.type === "message_start" && event.message) {
-        const role = (event.message as { role?: string }).role
-        const text = textOf(event.message)
-        if (role === "user") {
-          setItems((prev) => [
-            ...prev,
-            { kind: "message", id: nextId.current++, role: "user", text, streaming: false },
-          ])
-        } else if (role === "assistant") {
-          setItems((prev) => [
-            ...prev,
-            { kind: "message", id: nextId.current++, role: "assistant", text, streaming: true },
-          ])
-        }
-      } else if (event.type === "message_update" && event.message) {
-        const text = textOf(event.message)
-        setItems((prev) =>
-          prev.map((item, i) =>
-            i === prev.length - 1 && item.kind === "message" && item.role === "assistant" && item.streaming
-              ? { ...item, text }
-              : item,
-          ),
-        )
-      } else if (event.type === "message_end" && event.message) {
-        const role = (event.message as { role?: string }).role
-        if (role === "assistant") {
-          const text = textOf(event.message)
-          setItems((prev) =>
-            prev.map((item, i) =>
-              i === prev.length - 1 && item.kind === "message" && item.role === "assistant"
-                ? { ...item, text, streaming: false }
-                : item,
-            ),
-          )
-        }
-      } else if (event.type === "tool_execution_start" && event.toolCallId) {
-        setItems((prev) => [
-          ...prev,
-          {
-            kind: "tool",
-            id: nextId.current++,
-            toolCallId: event.toolCallId!,
-            name: String(event.toolName ?? "unknown"),
-            argsSummary: summarizeToolArgs(String(event.toolName ?? ""), event.args ?? {}),
-            state: "running",
-            startedAt: Date.now(),
-          },
-        ])
-      } else if (event.type === "tool_execution_end" && event.toolCallId) {
-        const detail = shorten(extractToolText(event.result), 200)
-        setItems((prev) =>
-          prev.map((item) =>
-            item.kind === "tool" && item.toolCallId === event.toolCallId && item.state === "running"
-              ? {
-                  ...item,
-                  state: event.isError ? "error" : "ok",
-                  detail: detail.length > 0 ? detail : undefined,
-                  durationMs: Date.now() - item.startedAt,
-                }
-              : item,
-          ),
-        )
-      } else if (event.type === "agent_end") {
-        // 停止/中断后，仍在「运行中」的卡片统一收口为已停止。
-        setItems((prev) =>
-          prev.map((item) =>
-            item.kind === "tool" && item.state === "running"
-              ? { ...item, state: "stopped", durationMs: Date.now() - item.startedAt }
-              : item,
-          ),
-        )
-      }
+      chatRef.current = reduceChatEvent(chatRef.current, payload.event)
+      setItems(chatRef.current.items)
     })
     const offStatus = window.hcode.onStatus(setStatus)
     const offWorkspace = window.hcode.onWorkspace((p) => {
       setWorkspace(p.projectRoot)
+      chatRef.current = initialChatState
       setItems([])
     })
     void window.hcode.status().then((s) => s && setWorkspace(s.projectRoot))
