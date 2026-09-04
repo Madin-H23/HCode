@@ -20,7 +20,11 @@ let win: BrowserWindow | null = null;
 let index: SessionIndex | null = null;
 
 function upstreamSessionList() {
-  return new SessionManager(sessionsDir()).list();
+  try {
+    return new SessionManager(sessionsDir()).list();
+  } catch {
+    return []; // 首次运行 ~/.tinycode/sessions 尚不存在
+  }
 }
 
 function send(channel: string, payload: unknown): void {
