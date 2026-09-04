@@ -51,3 +51,38 @@ test('E2E 冒烟 ①：选工作区 → 发消息 → 流式回复定稿', async
     await app.close()
   }
 })
+
+test('E2E 冒烟 ②：工具调用 → 卡片渲染且终态正确', async () => {
+  const workdir = fs.mkdtempSync(path.join(os.tmpdir(), 'hcode-e2e-ws-'))
+  fs.writeFileSync(path.join(workdir, 'package.json'), '{"name":"fixture"}\n')
+  const app: ElectronApplication = await _electron.launch({
+    args: ['out/main/index.js'],
+    env: {
+      ...process.env,
+      TINYCODE_MODEL: 'mock',
+      TINYCODE_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'hcode-e2e-home-')),
+      HCODE_TEST_USERDATA: fs.mkdtempSync(path.join(os.tmpdir(), 'hcode-e2e-ud-')),
+      HCODE_TEST_WORKSPACE: workdir,
+      HCODE_TEST_MOCK_SCRIPT: 'tool'
+    }
+  })
+  try {
+    const win: Page = await app.firstWindow()
+    await expect(win).toHaveTitle('HCode')
+
+    await win.getByTestId('open-workspace').click()
+    await expect(win.getByTestId('workspace')).toContainText(workdir, { timeout: 15000 })
+
+    await win.getByTestId('input').fill('看看 package.json')
+    await win.getByTestId('send').click()
+
+    const card = win.getByTestId('tool-card')
+    await expect(card).toHaveCount(1, { timeout: 20000 })
+    await expect(card).toContainText('read')
+    await expect(card).toContainText('package.json')
+    await expect(card).toHaveAttribute('data-state', 'ok')
+    await expect(win.getByTestId('messages')).toContainText('读取完成')
+  } finally {
+    await app.close()
+  }
+})

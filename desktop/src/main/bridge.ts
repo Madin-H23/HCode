@@ -1,5 +1,5 @@
 import type { AgentEvent } from "@earendil-works/pi-agent-core";
-import { fauxAssistantMessage } from "@earendil-works/pi-ai";
+import { fauxAssistantMessage, type AssistantMessage } from "@earendil-works/pi-ai";
 import { buildHarnessFromCli } from "../../../src/cli/commands.js";
 import type { Harness } from "../../../src/bootstrap.js";
 
@@ -35,6 +35,8 @@ export interface HarnessBridge {
   readonly isMock: boolean;
   /** mock 模式下注入一条脚本回复；非 mock 模型时抛错（绝不静默失效）。 */
   armMockScript(text: string): void;
+  /** mock 模式下注入多段脚本（含 toolCall），驱动真实工具执行；非 mock 抛错。 */
+  armMockMessages(messages: AssistantMessage[]): void;
   /** 释放 Harness（MCP/子代理等后台资源）。切换会话时必须先调用。 */
   dispose(): Promise<void>;
   /** 仅供测试/装配层访问底层 Harness（如 setPrompt、session 装配）。 */
@@ -93,6 +95,12 @@ export async function createHarnessBridge(
     sink.onEvent({ seq: ++seq, event });
   });
 
+  const armMock = (messages: AssistantMessage[]): void => {
+    const handle = harness.models.mockHandle;
+    if (!handle) throw new Error("当前不是 mock 模型，无法注入调试脚本");
+    handle.setResponses(messages);
+  };
+
   return {
     harness,
 
@@ -119,9 +127,11 @@ export async function createHarnessBridge(
     status: currentStatus,
 
     armMockScript(text: string): void {
-      const handle = harness.models.mockHandle;
-      if (!handle) throw new Error("当前不是 mock 模型，无法注入调试脚本");
-      handle.setResponses([fauxAssistantMessage(text)]);
+      armMock([fauxAssistantMessage(text)]);
+    },
+
+    armMockMessages(messages: AssistantMessage[]): void {
+      armMock(messages);
     },
 
     dispose(): Promise<void> {

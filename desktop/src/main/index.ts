@@ -2,6 +2,7 @@ import { app, BrowserWindow, dialog, ipcMain } from "electron";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { createHarnessBridge, type HarnessBridge, type WorkspacePickResult } from "./bridge";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -99,7 +100,15 @@ function registerIpc(): void {
     if (typeof text !== "string" || text.trim().length === 0) throw new Error("prompt 需要非空文本");
     const current = requireBridge();
     if (current.isMock) {
-      current.armMockScript(`（mock）收到：「${text}」`);
+      if (process.env.HCODE_TEST_MOCK_SCRIPT === "tool") {
+        // E2E 注入口：脚本化一次真实工具执行（read → 最终答复），驱动工具卡片渲染。
+        current.armMockMessages([
+          fauxAssistantMessage([fauxToolCall("read", { path: "package.json" })]),
+          fauxAssistantMessage("读取完成：package.json 已检查。"),
+        ]);
+      } else {
+        current.armMockScript(`（mock）收到：「${text}」`);
+      }
     }
     await current.prompt(text);
   });
