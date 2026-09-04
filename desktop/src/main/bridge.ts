@@ -2,6 +2,7 @@ import type { AgentEvent } from "@earendil-works/pi-agent-core";
 import { fauxAssistantMessage, type AssistantMessage } from "@earendil-works/pi-ai";
 import { buildHarnessFromCli } from "../../../src/cli/commands.js";
 import type { Harness } from "../../../src/bootstrap.js";
+import type { PromptOutcome } from "../../../src/permissions/manager.js";
 
 /**
  * 主进程桥——桌面端唯一 seam（SPEC #1 Testing Decisions）。
@@ -25,12 +26,24 @@ export interface BridgeStatus {
 export interface BridgeSink {
   onEvent(envelope: EventEnvelope): void;
   onStatus(status: BridgeStatus): void;
+  /** 权限 ASK 推送；缺省时不装 setPrompt（上游无回调=deny 的安全默认）。 */
+  onPermission?(request: PermissionRequestPayload): void;
+}
+
+export interface PermissionRequestPayload {
+  id: number;
+  toolName: string;
+  title: string;
+  detail?: string;
+  reason: string;
 }
 
 export interface HarnessBridge {
   prompt(text: string): Promise<void>;
   abort(): void;
   status(): BridgeStatus;
+  /** 应答一条权限 ASK；id 无效时抛错。 */
+  respondPermission(id: number, outcome: PromptOutcome): void;
   /** 当前是否 mock 模型装配（调试脚本注入口的判据）。 */
   readonly isMock: boolean;
   /** mock 模式下注入一条脚本回复；非 mock 模型时抛错（绝不静默失效）。 */
@@ -101,6 +114,24 @@ export async function createHarnessBridge(
     handle.setResponses(messages);
   };
 
+  // 权限闸门上屏：ASK 经 sink 推给宿主面对话框；dispose 时未应答的一律 deny。
+  const pendingPermissions = new Map<number, (outcome: PromptOutcome) => void>();
+  let permissionSeq = 0;
+  if (sink.onPermission) {
+    const onPermission = sink.onPermission.bind(sink);
+    harness.permissions.setPrompt(async (request) => {
+      const id = ++permissionSeq;
+      onPermission({
+        id,
+        toolName: request.toolName,
+        title: request.title,
+        detail: request.detail,
+        reason: request.reason,
+      });
+      return new Promise<PromptOutcome>((resolve) => pendingPermissions.set(id, resolve));
+    });
+  }
+
   return {
     harness,
 
@@ -124,6 +155,13 @@ export async function createHarnessBridge(
       harness.runtime.abort();
     },
 
+    respondPermission(id: number, outcome: PromptOutcome): void {
+      const resolve = pendingPermissions.get(id);
+      if (!resolve) throw new Error(`无此权限请求：${id}`);
+      pendingPermissions.delete(id);
+      resolve(outcome);
+    },
+
     status: currentStatus,
 
     armMockScript(text: string): void {
@@ -135,6 +173,8 @@ export async function createHarnessBridge(
     },
 
     dispose(): Promise<void> {
+      for (const resolve of pendingPermissions.values()) resolve("deny");
+      pendingPermissions.clear();
       return harness.shutdown();
     },
   };

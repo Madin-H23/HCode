@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react"
-import type { AgentEventEnvelope, BridgeStatus } from "./hcode.d"
+import type { AgentEventEnvelope, BridgeStatus, PermissionRequestPayload, PromptOutcome } from "./hcode.d"
 import { initialChatState, reduceChatEvent, type ChatItem, type ChatState } from "./chat"
 
 const styles = {
@@ -95,6 +95,41 @@ const styles = {
     fontSize: 14,
   },
   errorLine: { color: "#ff7b72", fontSize: 12, padding: "0 16px 8px", margin: 0 },
+  overlay: {
+    position: "fixed" as const,
+    inset: 0,
+    backgroundColor: "rgba(0,0,0,0.55)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 40,
+  },
+  dialog: {
+    width: "min(520px, 92vw)",
+    backgroundColor: "#232329",
+    border: "1px solid #3a3a44",
+    borderRadius: 12,
+    padding: 20,
+    display: "flex",
+    flexDirection: "column" as const,
+    gap: 10,
+  },
+  dialogTitle: { margin: 0, fontSize: 16 },
+  dialogTool: { color: "#e6e6ea", fontWeight: 600 },
+  dialogBody: {
+    margin: 0,
+    fontSize: 13,
+    color: "#b9b9c3",
+    whiteSpace: "pre-wrap" as const,
+    maxHeight: 200,
+    overflowY: "auto" as const,
+    backgroundColor: "#111114",
+    borderRadius: 6,
+    padding: 8,
+  },
+  dialogReason: { margin: 0, fontSize: 12, color: "#d29922" },
+  dialogRow: { display: "flex", gap: 8, justifyContent: "flex-end" },
+  permHint: { fontSize: 11, color: "#6d6d78", margin: 0 },
 }
 
 type CardState = "running" | "ok" | "error" | "stopped"
@@ -123,6 +158,7 @@ export default function App() {
   const [items, setItems] = useState<ChatItem[]>([])
   const [input, setInput] = useState("")
   const [error, setError] = useState<string | null>(null)
+  const [permissions, setPermissions] = useState<PermissionRequestPayload[]>([])
   const chatRef = useRef<ChatState>(initialChatState)
   const messagesRef = useRef<HTMLDivElement>(null)
 
@@ -136,15 +172,40 @@ export default function App() {
       setWorkspace(p.projectRoot)
       chatRef.current = initialChatState
       setItems([])
+      setPermissions([])
     })
+    const offPermission = window.hcode.onPermission((request) =>
+      setPermissions((prev) => [...prev, request]),
+    )
     void window.hcode.status().then((s) => s && setWorkspace(s.projectRoot))
     void window.hcode.recentWorkspaces().then((r) => setRecents(r.recents))
     return () => {
       offEvent()
       offStatus()
       offWorkspace()
+      offPermission()
     }
   }, [])
+
+  const respond = (request: PermissionRequestPayload, outcome: PromptOutcome): void => {
+    setPermissions((prev) => prev.filter((p) => p.id !== request.id))
+    void window.hcode.respondPermission(request.id, outcome).catch((err: unknown) =>
+      setError(err instanceof Error ? err.message : String(err)),
+    )
+  }
+
+  // 关闭对话框 = 拒绝：Escape 兜底走 deny（上游「ask 无应答=拒绝」的界面等价物）。
+  useEffect(() => {
+    if (permissions.length === 0) return
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === "Escape") {
+        const first = permissions[0]
+        if (first) respond(first, "deny")
+      }
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [permissions])
 
   useEffect(() => {
     messagesRef.current?.scrollTo({ top: messagesRef.current.scrollHeight })
@@ -260,6 +321,42 @@ export default function App() {
         <p style={styles.errorLine} data-testid="error">
           {error}
         </p>
+      )}
+
+      {permissions.length > 0 && (
+        <div style={styles.overlay} data-testid="perm-dialog">
+          <div style={styles.dialog}>
+            <p style={styles.dialogTitle}>权限审批 · {permissions.length > 1 ? `（${permissions.length} 项待审）` : ""}</p>
+            <p style={styles.dialogTool}>{permissions[0]!.toolName}</p>
+            <p style={styles.dialogTool}>{permissions[0]!.title}</p>
+            {permissions[0]!.detail && <pre style={styles.dialogBody}>{permissions[0]!.detail}</pre>}
+            <p style={styles.dialogReason}>{permissions[0]!.reason}</p>
+            <div style={styles.dialogRow}>
+              <button
+                style={styles.button}
+                data-testid="perm-deny"
+                onClick={() => respond(permissions[0]!, "deny")}
+              >
+                拒绝
+              </button>
+              <button
+                style={styles.button}
+                data-testid="perm-always"
+                onClick={() => respond(permissions[0]!, "always")}
+              >
+                总是允许
+              </button>
+              <button
+                style={styles.button}
+                data-testid="perm-once"
+                onClick={() => respond(permissions[0]!, "once")}
+              >
+                允许一次
+              </button>
+            </div>
+            <p style={styles.permHint}>Esc 关闭视为拒绝 · 「总是允许」按工具+命令族记忆（仅本会话）</p>
+          </div>
+        </div>
       )}
 
       <div style={styles.inputRow}>

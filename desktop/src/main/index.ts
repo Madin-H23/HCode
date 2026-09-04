@@ -49,6 +49,7 @@ async function startSession(
   bridge = await createHarnessBridge({ projectRoot, mock, session }, {
     onEvent: (envelope) => send("hcode:agent-event", envelope),
     onStatus: (status) => send("hcode:status", status),
+    onPermission: (request) => send("hcode:permission", request),
   });
   pushRecent(projectRoot);
   send("hcode:workspace", { projectRoot });
@@ -94,6 +95,15 @@ function registerIpc(): void {
     if (!current) throw new Error("尚未选择工作区");
     await startSession(current, { mode: "new" });
     return { ok: true as const };
+  });
+
+  ipcMain.handle("hcode/permission/respond", async (_e, payload: unknown) => {
+    const { id, outcome } = (payload ?? {}) as { id?: unknown; outcome?: unknown };
+    if (typeof id !== "number") throw new Error("需要权限请求 id");
+    if (outcome !== "once" && outcome !== "always" && outcome !== "deny") {
+      throw new Error("需要 once|always|deny 应答");
+    }
+    requireBridge().respondPermission(id, outcome);
   });
 
   ipcMain.handle("hcode/prompt", async (_e, text: unknown) => {

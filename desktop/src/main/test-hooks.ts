@@ -13,6 +13,14 @@ export function armDebugMockScript(bridge: HarnessBridge, text: string): void {
       fauxAssistantMessage([fauxToolCall("read", { path: "package.json" })]),
       fauxAssistantMessage("读取完成：package.json 已检查。"),
     ]);
+  } else if (process.env.HCODE_TEST_MOCK_SCRIPT === "permission") {
+    // 脚本化一次写盘（write 走 ASK 闸门），路径随 prompt 文本变化 → 不同审批族。
+    bridge.armMockMessages([
+      fauxAssistantMessage([
+        fauxToolCall("write", { path: `hcode-perm-${text.length}.txt`, content: text }),
+      ]),
+      fauxAssistantMessage("写入完成"),
+    ]);
   } else {
     bridge.armMockScript(`（mock）收到：「${text}」`);
   }

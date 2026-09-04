@@ -5,7 +5,7 @@ import os from 'node:os'
 import path from 'node:path'
 
 interface LaunchOptions {
-  script?: 'tool'
+  script?: 'tool' | 'permission'
 }
 
 /** 统一的 E2E 装配：mock 模型 + 隔离 TINYCODE_HOME/userData + 可选工具脚本注入口。 */
@@ -76,6 +76,45 @@ test('E2E 冒烟 ②：工具调用 → 卡片渲染且终态正确', async () =
     await expect(card).toContainText('package.json')
     await expect(card).toHaveAttribute('data-state', 'ok')
     await expect(win.getByTestId('messages')).toContainText('读取完成')
+  } finally {
+    await app.close()
+  }
+})
+
+test('E2E 冒烟 ③：权限 ASK 对话框 round-trip（once / always / Esc=deny）', async () => {
+  const { app, win, workdir } = await launchApp({ script: 'permission' })
+  try {
+    // ① once：放行写盘（once 不记忆 → 同文本下次仍会问）
+    await win.getByTestId('input').fill('写一次')
+    await win.getByTestId('send').click()
+    await expect(win.getByTestId('perm-dialog')).toBeVisible({ timeout: 20000 })
+    await win.getByTestId('perm-once').click()
+    await expect(win.getByTestId('tool-card')).toHaveCount(1, { timeout: 15000 })
+    await expect(win.getByTestId('tool-card').first()).toHaveAttribute('data-state', 'ok')
+    expect(fs.existsSync(path.join(workdir, 'hcode-perm-3.txt'))).toBe(true)
+
+    // ② 同文本再次弹（once 不记忆）→ 点 always 记住本族
+    await win.getByTestId('input').fill('写一次')
+    await win.getByTestId('send').click()
+    await expect(win.getByTestId('perm-dialog')).toBeVisible({ timeout: 20000 })
+    await win.getByTestId('perm-always').click()
+    await expect(win.getByTestId('tool-card')).toHaveCount(2, { timeout: 15000 })
+    await expect(win.getByTestId('tool-card').nth(1)).toHaveAttribute('data-state', 'ok')
+
+    // ③ 同族第三次：不再弹，直接放行
+    await win.getByTestId('input').fill('写一次')
+    await win.getByTestId('send').click()
+    await expect(win.getByTestId('tool-card')).toHaveCount(3, { timeout: 15000 })
+    await expect(win.getByTestId('tool-card').nth(2)).toHaveAttribute('data-state', 'ok')
+    await expect(win.getByTestId('perm-dialog')).toHaveCount(0)
+
+    // ④ 换审批族 → 新对话框；Esc 关闭 = deny → 工具结果错误卡片
+    await win.getByTestId('input').fill('换个更长的文件名来写')
+    await win.getByTestId('send').click()
+    await expect(win.getByTestId('perm-dialog')).toBeVisible({ timeout: 20000 })
+    await win.keyboard.press('Escape')
+    await expect(win.getByTestId('tool-card')).toHaveCount(4, { timeout: 15000 })
+    await expect(win.getByTestId('tool-card').last()).toHaveAttribute('data-state', 'error')
   } finally {
     await app.close()
   }
