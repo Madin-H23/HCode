@@ -2,7 +2,7 @@ import type { AgentEvent } from "@earendil-works/pi-agent-core";
 import { fauxAssistantMessage, type AssistantMessage } from "@earendil-works/pi-ai";
 import { buildHarnessFromCli } from "../../../src/cli/commands.js";
 import type { Harness } from "../../../src/bootstrap.js";
-import type { PromptOutcome } from "../../../src/permissions/manager.js";
+import type { PromptOutcome, PermissionRequestView } from "../../../src/permissions/manager.js";
 
 /**
  * 主进程桥——桌面端唯一 seam（SPEC #1 Testing Decisions）。
@@ -30,13 +30,7 @@ export interface BridgeSink {
   onPermission?(request: PermissionRequestPayload): void;
 }
 
-export interface PermissionRequestPayload {
-  id: number;
-  toolName: string;
-  title: string;
-  detail?: string;
-  reason: string;
-}
+export type PermissionRequestPayload = PermissionRequestView & { id: number };
 
 export interface HarnessBridge {
   prompt(text: string): Promise<void>;
@@ -121,13 +115,7 @@ export async function createHarnessBridge(
     const onPermission = sink.onPermission.bind(sink);
     harness.permissions.setPrompt(async (request) => {
       const id = ++permissionSeq;
-      onPermission({
-        id,
-        toolName: request.toolName,
-        title: request.title,
-        detail: request.detail,
-        reason: request.reason,
-      });
+      onPermission({ id, ...request });
       return new Promise<PromptOutcome>((resolve) => pendingPermissions.set(id, resolve));
     });
   }

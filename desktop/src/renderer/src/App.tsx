@@ -326,7 +326,7 @@ export default function App() {
       {permissions.length > 0 && (
         <div style={styles.overlay} data-testid="perm-dialog">
           <div style={styles.dialog}>
-            <p style={styles.dialogTitle}>权限审批 · {permissions.length > 1 ? `（${permissions.length} 项待审）` : ""}</p>
+            <p style={styles.dialogTitle}>权限确认 · {permissions.length > 1 ? `（${permissions.length} 项待确认）` : ""}</p>
             <p style={styles.dialogTool}>{permissions[0]!.toolName}</p>
             <p style={styles.dialogTool}>{permissions[0]!.title}</p>
             {permissions[0]!.detail && <pre style={styles.dialogBody}>{permissions[0]!.detail}</pre>}
