@@ -64,7 +64,7 @@ const styles = {
   },
   user: { alignSelf: "flex-end", backgroundColor: "#2f4a6e" },
   assistant: { alignSelf: "flex-start", backgroundColor: "#26262e" },
-  placeholder: { alignSelf: "center", color: "#6d6d78", fontSize: 13 },
+  placeholder: { alignSelf: "center", color: "#6d6d78", fontSize: 13, margin: "auto 0" },
   toolCard: {
     alignSelf: "flex-start",
     maxWidth: "78%",
@@ -160,7 +160,6 @@ export default function App() {
   const [error, setError] = useState<string | null>(null)
   const [permissions, setPermissions] = useState<PermissionRequestPayload[]>([])
   const [sessions, setSessions] = useState<SessionSummary[]>([])
-  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null)
   const chatRef = useRef<ChatState>(initialChatState)
   const messagesRef = useRef<HTMLDivElement>(null)
 
@@ -193,10 +192,7 @@ export default function App() {
   const loadSessions = (): void => {
     void window.hcode
       .listSessions()
-      .then((r) => {
-        setSessions(r.sessions)
-        setCurrentSessionId(r.currentSessionId)
-      })
+      .then((r) => setSessions(r.sessions))
       .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)))
   }
 
@@ -239,7 +235,10 @@ export default function App() {
     void window.hcode
       .pickWorkspace()
       .then((r) => {
-        if (r.ok && r.projectRoot) setRecents(r.recents)
+        if (r.ok && r.projectRoot) {
+          setRecents(r.recents)
+          loadSessions()
+        }
       })
       .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)))
   }
@@ -292,7 +291,7 @@ export default function App() {
         <p style={styles.status} data-testid="status">
           {status
             ? `${busy ? "busy" : "idle"} · ${status.model} · 权限 ${status.permissionMode} · ${
-                currentSessionId ? `会话 ${currentSessionId.slice(0, 8)}` : "无会话"
+                status.sessionId ? `会话 ${status.sessionId.slice(0, 8)}` : "无会话"
               }`
             : "未装配"}
         </p>
@@ -311,7 +310,7 @@ export default function App() {
           新会话
         </button>
         <select
-          style={{ ...styles.button, maxWidth: 300 }}
+          style={{ ...styles.button, width: 200 }}
           data-testid="session-select"
           disabled={busy}
           value=""
@@ -327,18 +326,21 @@ export default function App() {
         <button style={styles.button} data-testid="sessions-refresh" disabled={busy} onClick={loadSessions}>
           刷新
         </button>
-        {recents.map((ws) => (
-          <button
-            key={ws}
-            style={styles.chip}
-            data-testid="recent"
-            title={ws}
-            disabled={busy}
-            onClick={() => openRecent(ws)}
-          >
-            {ws}
-          </button>
-        ))}
+        {recents.slice(0, 5).map((ws) => {
+          const base = ws.split(/[\\/]/).filter(Boolean).pop() ?? ws
+          return (
+            <button
+              key={ws}
+              style={styles.chip}
+              data-testid="recent"
+              title={ws}
+              disabled={busy}
+              onClick={() => openRecent(ws)}
+            >
+              {base}
+            </button>
+          )
+        })}
       </div>
 
       <div style={styles.messages} data-testid="messages" ref={messagesRef}>
@@ -380,7 +382,9 @@ export default function App() {
       {permissions.length > 0 && (
         <div style={styles.overlay} data-testid="perm-dialog">
           <div style={styles.dialog}>
-            <p style={styles.dialogTitle}>权限确认 · {permissions.length > 1 ? `（${permissions.length} 项待确认）` : ""}</p>
+            <p style={styles.dialogTitle}>
+              权限确认{permissions.length > 1 ? `（${permissions.length} 项待确认）` : ""}
+            </p>
             <p style={styles.dialogTool}>{permissions[0]!.toolName}</p>
             <p style={styles.dialogTool}>{permissions[0]!.title}</p>
             {permissions[0]!.detail && <pre style={styles.dialogBody}>{permissions[0]!.detail}</pre>}

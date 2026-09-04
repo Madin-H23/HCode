@@ -122,13 +122,12 @@ describe("reduceChatEvent（聊天流归约）", () => {
     expect(card.durationMs).toBe(2000);
   });
 
-  it("faux 工具脚本驱动（对齐 E2E 注入形状）", () => {
+  it("纯 toolCall 助手消息不留空气泡（start 不推、end 移除，TUI 同语义）", () => {
     const scripted = fauxAssistantMessage([fauxToolCall("read", { path: "package.json" })]);
     let s = initialChatState;
     s = reduceChatEvent(s, { type: "message_start", message: scripted } as unknown as AgentEvent, T0);
+    expect(s.items).toHaveLength(0);
     s = reduceChatEvent(s, { type: "message_end", message: scripted } as unknown as AgentEvent, T0);
-    const assistant = s.items[0] as Extract<typeof s.items[number], { kind: "message" }>;
-    expect(assistant.role).toBe("assistant");
-    expect(assistant.streaming).toBe(false);
+    expect(s.items).toHaveLength(0);
   });
 });

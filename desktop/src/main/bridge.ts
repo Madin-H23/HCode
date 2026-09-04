@@ -65,9 +65,11 @@ export interface WorkspacePickResult {
 }
 
 function modelLabel(harness: Harness): string {
-  const model = harness.model as { provider?: string; model?: string } | undefined;
-  if (model?.model) return model.provider ? `${model.provider}/${model.model}` : String(model.model);
-  return "unknown";
+  const model = harness.model as
+    | { name?: string; id?: string; provider?: string; model?: string }
+    | undefined;
+  if (!model) return "unknown";
+  return model.name ?? (model.model ? `${model.provider ?? ""}/${model.model}` : model.id) ?? "unknown";
 }
 
 export async function createHarnessBridge(

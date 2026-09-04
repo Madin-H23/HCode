@@ -103,6 +103,14 @@ function lastStreamingAssistantIndex(items: ChatItem[]): number {
   return -1
 }
 
+/** 纯 toolCall 的助手消息不留文本气泡（TUI 同语义：工具调用由卡片呈现）。 */
+function hasToolCall(message: unknown): boolean {
+  const content = (message as { content?: unknown } | undefined)?.content
+  return Array.isArray(content) && content.some(
+    (block) => typeof block === "object" && block !== null && (block as { type?: string }).type === "toolCall",
+  )
+}
+
 /** 单事件归约；now 仅用于计时注入（测试确定性）。 */
 export function reduceChatEvent(state: ChatState, event: AgentEvent, now: number = Date.now()): ChatState {
   switch (event.type) {
@@ -110,6 +118,8 @@ export function reduceChatEvent(state: ChatState, event: AgentEvent, now: number
       const role = event.message.role
       const text = textOf(event.message)
       if (role !== "user" && role !== "assistant") return state
+      // 纯 toolCall 的助手消息不推空气泡
+      if (role === "assistant" && text === "" && hasToolCall(event.message)) return state
       return {
         nextId: state.nextId + 1,
         items: [
@@ -129,10 +139,15 @@ export function reduceChatEvent(state: ChatState, event: AgentEvent, now: number
       if (event.message.role !== "assistant") return state
       const idx = lastStreamingAssistantIndex(state.items)
       if (idx === -1) return state
+      const text = textOf(event.message)
+      // 定稿后仍无文本 → 纯 toolCall 消息，移除占位气泡
+      if (text === "") {
+        return { ...state, items: state.items.filter((_, i) => i !== idx) }
+      }
       const items = state.items.slice()
       items[idx] = {
         ...(items[idx] as ChatMessage),
-        text: textOf(event.message),
+        text,
         streaming: false,
       }
       return { ...state, items }
