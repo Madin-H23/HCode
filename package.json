@@ -1,5 +1,5 @@
 {
-  "name": "tinycode",
+  "name": "hcode",
   "version": "1.0.0",
   "description": "A minimal but complete Coding Agent Harness — learn how coding agents work by reading one",
   "type": "module",
@@ -8,7 +8,7 @@
     "node": ">=22.19"
   },
   "bin": {
-    "tinycode": "./dist/cli/index.js"
+    "hcode": "./dist/cli/index.js"
   },
   "scripts": {
     "dev": "tsx src/cli/index.ts",

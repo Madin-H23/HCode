@@ -2,7 +2,7 @@ import tseslint from "typescript-eslint";
 
 export default tseslint.config(
   {
-    ignores: ["dist/**", "node_modules/**", "fixtures/**", ".tmp/**"],
+    ignores: ["dist/**", "node_modules/**", "fixtures/**", ".tmp/**", "desktop/out/**"],
   },
   ...tseslint.configs.recommended,
   {
