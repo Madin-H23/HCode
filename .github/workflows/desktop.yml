@@ -5,10 +5,18 @@ on:
     branches: [main, develop]
   pull_request:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   desktop:
     name: Desktop (typecheck + unit + e2e)
     runs-on: windows-latest
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: desktop
