@@ -1,0 +1,38 @@
+{
+  "exclude": [
+    "**/package-lock.json",
+    "desktop/shots/**"
+  ],
+  "rules": [
+    {
+      "path": "src/**",
+      "rule": "## Fork 纪律（ADR-0003，最高优先级）\n本目录是上游 helsome/tinycode 的源码。审查时强制执行：\n- 改动必须限定为**修 bug**；任何新功能、重构、重命名都不应出现在本目录——应标记为「应移至 desktop/」并退回\n- 环境变量名（TINYCODE_HOME / TINYCODE_MODEL / TINYCODE_PERMISSION_MODE）、模块名、函数签名、行为语义必须与上游零差异（保证 upstream remote 可持续合流）\n- 品牌字符串只允许出现在 package.json 的 name/bin 字段\n- 发现任何「顺手优化」上游代码的 diff，一律标记 severity=high",
+      "merge_system_rule": true
+    },
+    {
+      "path": "desktop/src/main/bridge.ts",
+      "rule": "## 主进程桥核心契约\n- 本文件禁止 import 任何 Electron 模块（事件去向必须经构造参数 sink 注入，保证 vitest 可脱离 Electron 测试）\n- BridgeStatus / EventEnvelope / PermissionRequestPayload 字段变更必须同步：desktop/src/preload/index.ts、desktop/src/renderer/src/hcode.d.ts、SPEC（GitHub #1）\n- 权限安全默认不得破坏：sink 未提供 onPermission 时不得调用 setPrompt；dispose() 必须对所有未应答权限请求 resolve(\"deny\")\n- 事件必须附单调递增 seq；prompt 在 busy 时必须抛错而非排队\n- armMockScript/armMockMessages 在非 mock 装配下必须抛错，禁止静默失效",
+      "merge_system_rule": true
+    },
+    {
+      "path": "desktop/src/main/**",
+      "rule": "## Electron 主进程\n- BrowserWindow webPreferences 三项不得放松：contextIsolation: true、nodeIntegration: false、sandbox: true\n- 不得明文存储 provider key；TINYCODE_HOME 解析语义必须与上游一致（默认 ~/.tinycode，ADR-0004）\n- 新增 IPC invoke 必须做参数类型校验（unknown 收窄），事件推送必须经单一 agent 事件通道 + 单调 seq\n- startSession 的 busy 闸（Agent 正忙时拒绝切换/新建）不得移除\n- E2E 测试钩子（HCODE_TEST_*）只能出现在 test-hooks.ts，不得散落进生产 handler",
+      "merge_system_rule": true
+    },
+    {
+      "path": "desktop/src/renderer/**",
+      "rule": "## 渲染端（零 Node 权限面）\n- 只能经 window.hcode 桥通信；禁止出现 require/import of electron、process、fs 等 Node 能力\n- chat.ts 的 reduceChatEvent 必须保持纯函数（Date.now 等只能经参数注入）；修改 reducer 必须同步 desktop/tests/chat.test.ts 断言\n- 中文界面文案使用 CONTEXT.md canonical 词汇（会话/工作区/权限确认），避免 _Avoid_ 词\n- 用户可见的异步动作必须有 .catch 落到 error 横幅，禁止静默失败",
+      "merge_system_rule": true
+    },
+    {
+      "path": ".github/workflows/**",
+      "rule": "## CI 加固（OCR 2026-09-05 审查发现固化）\n- 每个 workflow 必须声明：permissions 最小权限（contents: read）、timeout-minutes、concurrency 分组 + cancel-in-progress\n- 根目录依赖安装必须 --ignore-scripts（desktop job 不执行 node-pty/esbuild 产物）；desktop/ 目录安装不得 ignore-scripts（electron 二进制 postinstall 需要）\n- 根安装步骤必须显式 working-directory: .（workflow 级 defaults 会被 desktop 覆盖——已踩坑）",
+      "merge_system_rule": true
+    },
+    {
+      "path": "desktop/src/**",
+      "rule": "## 测试覆盖门槛\n- bridge.ts / chat.ts / session-index.ts 的新增分支必须有为该行为断言的测试（desktop/tests/）；修复 bug 的 PR 必须先有失败用例\n- 新增 IPC invoke 通道必须同步 preload 与 hcode.d.ts，并确认 SPEC（#1）契约表更新或新增挂账 comment",
+      "merge_system_rule": true
+    }
+  ]
+}

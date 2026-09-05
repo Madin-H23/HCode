@@ -22,3 +22,4 @@ Single-context：repo 根 `CONTEXT.md`（纯词汇表）+ `docs/adr/`。See `doc
 - `ARCHITECTURE.md` — 构架地图：哪些能力来自 Pi、哪些来自本仓库，先读它再动代码
 - 分支纪律：`main` 仅稳定态；一切改造在 `develop`；大块改造走 `feature/<topic>`，`--no-ff` 合回 develop
 - 上游同步约束见 `docs/adr/0003-fork-sync-discipline.md`
+- OCR 代码审查（open-code-review）：规则在 `.opencodereview/rule.json`，用法 `ocr delegate preview --rule .opencodereview/rule.json --from main --to develop --format json`（delegation 模式，规则变更需实测验证）
