@@ -53,6 +53,8 @@ test('E2E 冒烟 ①：选工作区 → 发消息 → 流式回复定稿', async
     await expect(win.getByTestId('msg-user')).toContainText('你好', { timeout: 20000 })
     await expect(win.getByTestId('messages')).toContainText('（mock）收到')
     await expect(win.getByTestId('messages').locator('[data-streaming="true"]')).toHaveCount(0)
+    // P1-T3：状态行含上下文用量（上限未知时只显示 ~Nk）
+    await expect(win.getByTestId('status')).toContainText('ctx ~', { timeout: 10000 })
 
     // 会话落盘：JSONL 真相源已在 TINYCODE_HOME/sessions 下生成
     const sessions = fs.readdirSync(path.join(home, 'sessions'))

@@ -21,6 +21,10 @@ export interface BridgeStatus {
   sessionId?: string;
   projectRoot: string;
   permissionMode: string;
+  /** 上下文估算（TUI 同口径，约 4 字符/token）。 */
+  tokens: number;
+  /** 当前模型上下文窗口（模型未声明时缺省）。 */
+  contextWindow?: number;
 }
 
 export interface BridgeSink {
@@ -93,6 +97,8 @@ export async function createHarnessBridge(
     sessionId: harness.session?.id,
     projectRoot: harness.projectRoot,
     permissionMode: harness.permissions.mode,
+    tokens: harness.contextManager.estimate(harness.runtime.agent.state.messages),
+    contextWindow: (harness.model as { contextWindow?: number } | undefined)?.contextWindow,
   });
 
   const emitStatus = (): void => {

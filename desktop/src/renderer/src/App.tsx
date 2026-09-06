@@ -330,6 +330,8 @@ export default function App() {
           {status
             ? `${busy ? "busy" : "idle"} · ${status.model} · 权限 ${status.permissionMode} · ${
                 status.sessionId ? `会话 ${status.sessionId.slice(0, 8)}` : "无会话"
+              } · ctx ~${Math.round(status.tokens / 1000)}k${
+                status.contextWindow ? `/${Math.round(status.contextWindow / 1000)}k` : ""
               }`
             : "未装配"}
         </p>

@@ -63,6 +63,24 @@ describe("HarnessBridge（主进程桥）", () => {
     expect(status.permissionMode).toBe("ask");
     expect(status.projectRoot).toBe(workdir);
     expect(status.model).not.toBe("");
+    expect(typeof status.tokens).toBe("number");
+    expect(status.tokens).toBeGreaterThanOrEqual(0);
+    expect(status.contextWindow).toBeGreaterThan(0);
+  }, 30000);
+
+  it("prompt 后 status.tokens 增长（上下文估算联动）", async () => {
+    const bridge = await createHarnessBridge(
+      { projectRoot: workdir, mock: true },
+      { onEvent: () => {}, onStatus: () => {} },
+    );
+    const { harness } = bridge;
+    cleanups.push(harness.shutdown());
+
+    const before = bridge.status().tokens;
+    bridge.armMockScript("这是一条足够长的回复内容用来推高上下文估算。");
+    await bridge.prompt("请回复一段较长的话");
+    const after = bridge.status().tokens;
+    expect(after).toBeGreaterThan(before);
   }, 30000);
 
   it("abort 经桥可达：idle 安全调用；生成中调用循环照常收尾且 busy 归零", async () => {
