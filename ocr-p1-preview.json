@@ -1,0 +1,80 @@
+{
+  "schema_version": "1",
+  "mode": "range",
+  "repository": "D:/Develop/h-family/hcode",
+  "from": "develop",
+  "to": "feature/p1-enhancements",
+  "merge_base": "85809e67083f900ec1a649ae8ddfd92a8c1a7bae",
+  "total_files": 10,
+  "reviewable_count": 7,
+  "excluded_count": 3,
+  "total_insertions": 412,
+  "total_deletions": 7,
+  "reviewable_files": [
+    {
+      "path": "desktop/src/main/bridge.ts",
+      "status": "modified",
+      "insertions": 50,
+      "deletions": 0
+    },
+    {
+      "path": "desktop/src/main/index.ts",
+      "status": "modified",
+      "insertions": 11,
+      "deletions": 0
+    },
+    {
+      "path": "desktop/src/main/test-hooks.ts",
+      "status": "modified",
+      "insertions": 15,
+      "deletions": 0
+    },
+    {
+      "path": "desktop/src/preload/index.ts",
+      "status": "modified",
+      "insertions": 4,
+      "deletions": 0
+    },
+    {
+      "path": "desktop/src/renderer/src/App.tsx",
+      "status": "modified",
+      "insertions": 106,
+      "deletions": 4
+    },
+    {
+      "path": "desktop/src/renderer/src/chat.ts",
+      "status": "modified",
+      "insertions": 30,
+      "deletions": 0
+    },
+    {
+      "path": "desktop/src/renderer/src/hcode.d.ts",
+      "status": "modified",
+      "insertions": 4,
+      "deletions": 2
+    }
+  ],
+  "excluded_files": [
+    {
+      "path": "desktop/e2e/smoke.spec.ts",
+      "status": "modified",
+      "insertions": 81,
+      "deletions": 1,
+      "exclude_reason": "default_path"
+    },
+    {
+      "path": "desktop/tests/bridge.test.ts",
+      "status": "modified",
+      "insertions": 67,
+      "deletions": 0,
+      "exclude_reason": "default_path"
+    },
+    {
+      "path": "desktop/tests/chat.test.ts",
+      "status": "modified",
+      "insertions": 44,
+      "deletions": 0,
+      "exclude_reason": "default_path"
+    }
+  ]
+}
