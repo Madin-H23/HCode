@@ -185,15 +185,17 @@ export async function createHarnessBridge(
 
     async listModels(): Promise<ModelInfo[]> {
       const models = await harness.models.availableWithAuth();
-      return models.map((m) => {
-        const raw = m as { provider?: string; id?: string; name?: string; contextWindow?: number };
-        return {
-          provider: String(raw.provider ?? ""),
-          id: String(raw.id ?? ""),
-          name: String(raw.name ?? raw.id ?? ""),
-          contextWindow: typeof raw.contextWindow === "number" ? raw.contextWindow : undefined,
-        };
-      });
+      return models
+        .map((m) => {
+          const raw = m as { provider?: string; id?: string; name?: string; contextWindow?: number };
+          return {
+            provider: String(raw.provider ?? ""),
+            id: String(raw.id ?? ""),
+            name: String(raw.name ?? raw.id ?? ""),
+            contextWindow: typeof raw.contextWindow === "number" ? raw.contextWindow : undefined,
+          };
+        })
+        .filter((m) => m.provider.length > 0 && m.id.length > 0);
     },
 
     async setModel(provider: string, id: string): Promise<void> {
