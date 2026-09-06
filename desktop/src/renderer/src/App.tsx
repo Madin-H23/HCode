@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react"
-import type { AgentEventEnvelope, BridgeStatus, PermissionRequestPayload, PromptOutcome, SessionSummary } from "./hcode.d"
+import type { AgentEventEnvelope, BridgeStatus, ModelInfo, PermissionRequestPayload, PromptOutcome, SessionSummary } from "./hcode.d"
 import { initialChatState, reduceChatEvent, type ChatItem, type ChatState } from "./chat"
 
 const styles = {
@@ -184,6 +184,7 @@ export default function App() {
   const [permissions, setPermissions] = useState<PermissionRequestPayload[]>([])
   const [sessions, setSessions] = useState<SessionSummary[]>([])
   const [expandedDiffs, setExpandedDiffs] = useState<Set<number>>(new Set())
+  const [models, setModels] = useState<ModelInfo[]>([])
   const chatRef = useRef<ChatState>(initialChatState)
   const messagesRef = useRef<HTMLDivElement>(null)
 
@@ -210,6 +211,7 @@ export default function App() {
     void window.hcode.status().then((s) => s && setWorkspace(s.projectRoot))
     void window.hcode.recentWorkspaces().then((r) => setRecents(r.recents))
     void loadSessions()
+    void loadModels()
     return () => {
       offEvent()
       offStatus()
@@ -222,6 +224,22 @@ export default function App() {
     void window.hcode
       .listSessions()
       .then((r) => setSessions(r.sessions))
+      .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)))
+  }
+
+  const loadModels = (): void => {
+    void window.hcode
+      .listModels()
+      .then(setModels)
+      .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)))
+  }
+
+  const switchModel = (modelId: string): void => {
+    const [provider, id] = modelId.split("/")
+    if (!provider || !id) return
+    setError(null)
+    void window.hcode
+      .setModel(provider, id)
       .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)))
   }
 
@@ -349,6 +367,20 @@ export default function App() {
         >
           新会话
         </button>
+        <select
+          style={{ ...styles.button, maxWidth: 220 }}
+          data-testid="model-select"
+          disabled={busy}
+          value={status?.modelId ?? ""}
+          onChange={(e) => switchModel(e.target.value)}
+        >
+          {models.length === 0 && <option value={status?.modelId ?? ""}>{status?.model ?? "模型"}</option>}
+          {models.map((m) => (
+            <option key={`${m.provider}/${m.id}`} value={`${m.provider}/${m.id}`}>
+              {m.name}
+            </option>
+          ))}
+        </select>
         <select
           style={{ ...styles.button, width: 200 }}
           data-testid="session-select"

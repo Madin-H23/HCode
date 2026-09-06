@@ -142,6 +142,17 @@ function registerIpc(): void {
     requireBridge().respondPermission(id, outcome);
   });
 
+  ipcMain.handle("hcode/model/list", () => requireBridge().listModels());
+
+  ipcMain.handle("hcode/model/set", async (_e, payload: unknown) => {
+    const { provider, id } = (payload ?? {}) as { provider?: unknown; id?: unknown };
+    if (typeof provider !== "string" || typeof id !== "string" || id.length === 0) {
+      throw new Error("需要 provider 与 id");
+    }
+    await requireBridge().setModel(provider, id);
+    return { ok: true as const };
+  });
+
   ipcMain.handle("hcode/prompt", async (_e, text: unknown) => {
     if (typeof text !== "string" || text.trim().length === 0) throw new Error("prompt 需要非空文本");
     const current = requireBridge();

@@ -166,6 +166,20 @@ test('E2E 冒烟 ④：会话面——列表/新建/attach 恢复/继续追问',
   }
 })
 
+test('E2E P1-③：模型下拉含 mock 且选择后状态行联动', async () => {
+  const { app, win } = await launchApp()
+  try {
+    const select = win.getByTestId('model-select')
+    await expect(select.locator('option')).toHaveCount(1, { timeout: 15000 })
+    await expect(select.locator('option')).toContainText('TinyCode Mock')
+    await select.selectOption({ index: 0 })
+    await expect(win.getByTestId('status')).toContainText('TinyCode Mock', { timeout: 10000 })
+    await expect(win.getByTestId('error')).toHaveCount(0)
+  } finally {
+    await app.close()
+  }
+})
+
 test('E2E P1-②：abort 收口权限对话框', async () => {
   const { app, win, workdir } = await launchApp({ script: 'permission' })
   try {

@@ -83,6 +83,24 @@ describe("HarnessBridge（主进程桥）", () => {
     expect(after).toBeGreaterThan(before);
   }, 30000);
 
+  it("模型列表含 mock，热切换后 status.modelId 联动", async () => {
+    const statuses: BridgeStatus[] = [];
+    const bridge = await createHarnessBridge(
+      { projectRoot: workdir, mock: true },
+      { onEvent: () => {}, onStatus: (s) => statuses.push(s) },
+    );
+    cleanups.push(bridge.harness.shutdown());
+
+    const models = await bridge.listModels();
+    const mockEntry = models.find((m) => m.provider === "mock");
+    expect(mockEntry).toBeDefined();
+    expect(mockEntry!.name).toContain("Mock");
+
+    await bridge.setModel("mock", "tinycode-mock");
+    expect(bridge.status().modelId).toBe("mock/tinycode-mock");
+    expect(statuses.at(-1)!.modelId).toBe("mock/tinycode-mock");
+  }, 30000);
+
   it("abort 经桥可达：idle 安全调用；生成中调用循环照常收尾且 busy 归零", async () => {
     const events: EventEnvelope[] = [];
     const statuses: BridgeStatus[] = [];

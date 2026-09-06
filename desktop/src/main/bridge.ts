@@ -18,12 +18,21 @@ export interface EventEnvelope {
 export interface BridgeStatus {
   busy: boolean;
   model: string;
+  /** 当前模型标识（provider/id），模型下拉的选中项依据。 */
+  modelId: string;
   sessionId?: string;
   projectRoot: string;
   permissionMode: string;
   /** 上下文估算（TUI 同口径，约 4 字符/token）。 */
   tokens: number;
   /** 当前模型上下文窗口（模型未声明时缺省）。 */
+  contextWindow?: number;
+}
+
+export interface ModelInfo {
+  provider: string;
+  id: string;
+  name: string;
   contextWindow?: number;
 }
 
@@ -40,6 +49,10 @@ export interface HarnessBridge {
   prompt(text: string): Promise<void>;
   abort(): void;
   status(): BridgeStatus;
+  /** 枚举已配置凭据的模型（含 mock）。 */
+  listModels(): Promise<ModelInfo[]>;
+  /** 热切换模型（上游语义：仅赋值，下一轮生效，不清会话）。无效模型抛错。 */
+  setModel(provider: string, id: string): Promise<void>;
   /** 应答一条权限 ASK；id 无效时抛错。 */
   respondPermission(id: number, outcome: PromptOutcome): void;
   /** 当前是否 mock 模型装配（调试脚本注入口的判据）。 */
@@ -76,6 +89,11 @@ function modelLabel(harness: Harness): string {
   return model.name ?? (model.model ? `${model.provider ?? ""}/${model.model}` : model.id) ?? "unknown";
 }
 
+function modelIdLabel(harness: Harness): string {
+  const model = harness.model as { provider?: string; id?: string } | undefined;
+  return model?.provider && model?.id ? `${model.provider}/${model.id}` : "unknown";
+}
+
 export async function createHarnessBridge(
   options: DesktopHarnessOptions,
   sink: BridgeSink,
@@ -94,6 +112,7 @@ export async function createHarnessBridge(
   const currentStatus = (): BridgeStatus => ({
     busy,
     model: modelLabel(harness),
+    modelId: modelIdLabel(harness),
     sessionId: harness.session?.id,
     projectRoot: harness.projectRoot,
     permissionMode: harness.permissions.mode,
@@ -163,6 +182,25 @@ export async function createHarnessBridge(
     },
 
     status: currentStatus,
+
+    async listModels(): Promise<ModelInfo[]> {
+      const models = await harness.models.availableWithAuth();
+      return models.map((m) => {
+        const raw = m as { provider?: string; id?: string; name?: string; contextWindow?: number };
+        return {
+          provider: String(raw.provider ?? ""),
+          id: String(raw.id ?? ""),
+          name: String(raw.name ?? raw.id ?? ""),
+          contextWindow: typeof raw.contextWindow === "number" ? raw.contextWindow : undefined,
+        };
+      });
+    },
+
+    async setModel(provider: string, id: string): Promise<void> {
+      const resolved = await harness.models.resolve({ provider, model: id });
+      harness.runtime.setModel(resolved);
+      emitStatus();
+    },
 
     armMockScript(text: string): void {
       armMock([fauxAssistantMessage(text)]);
