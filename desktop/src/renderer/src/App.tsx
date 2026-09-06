@@ -484,7 +484,8 @@ export default function App() {
         <div style={styles.overlay} data-testid="perm-dialog">
           <div style={styles.dialog}>
             <p style={styles.dialogTitle}>
-              权限确认{permissions.length > 1 ? `（${permissions.length} 项待确认）` : ""}
+              权限确认
+              {permissions.length > 1 ? `（排队 ${permissions.length} 项）` : ""}
             </p>
             <p style={styles.dialogTool}>{permissions[0]!.toolName}</p>
             <p style={styles.dialogTool}>{permissions[0]!.title}</p>

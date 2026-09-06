@@ -5,7 +5,7 @@ import os from 'node:os'
 import path from 'node:path'
 
 interface LaunchOptions {
-  script?: 'tool' | 'permission' | 'edit'
+  script?: 'tool' | 'permission' | 'permission-multi' | 'edit'
 }
 
 /** 统一的 E2E 装配：mock 模型 + 隔离 TINYCODE_HOME/userData + 可选工具脚本注入口。 */
@@ -216,6 +216,29 @@ test('E2E P1-①：edit 卡片 +N -M 与展开 diff', async () => {
     await expect(win.getByTestId('diff-view')).toContainText('a + b')
     await win.getByTestId('diff-toggle').click()
     await expect(win.getByTestId('diff-view')).toHaveCount(0)
+  } finally {
+    await app.close()
+  }
+})
+
+test('E2E P1-④：权限队列逐项审批', async () => {
+  const { app, win, workdir } = await launchApp({ script: 'permission-multi' })
+  try {
+    await win.getByTestId('input').fill('写两个文件')
+    await win.getByTestId('send').click()
+    await expect(win.getByTestId('perm-dialog')).toBeVisible({ timeout: 20000 })
+    await expect(win.getByTestId('perm-dialog')).toContainText('multi-a.txt')
+
+    // 第 1 项：允许一次 → 顺序前进到第 2 项（顺序 toolCall 的权限逐个挂起）
+    await win.getByTestId('perm-once').click()
+    await expect(win.getByTestId('perm-dialog')).toContainText('multi-b.txt', { timeout: 10000 })
+
+    // 第 2 项：Esc = 拒当前项（末项 → 对话框关闭）
+    await win.keyboard.press('Escape')
+    await expect(win.getByTestId('perm-dialog')).toHaveCount(0, { timeout: 10000 })
+
+    expect(fs.existsSync(path.join(workdir, 'multi-a.txt'))).toBe(true)
+    expect(fs.existsSync(path.join(workdir, 'multi-b.txt'))).toBe(false)
   } finally {
     await app.close()
   }
