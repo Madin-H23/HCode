@@ -142,6 +142,10 @@ export async function createHarnessBridge(
     },
 
     abort(): void {
+      // 收口挂起权限（与 dispose 同语义）；上游在权限回调返回后与工具执行前各有
+      // signal.aborted 检查，全量 deny 时序安全——对话框立即清空、无悬挂 Promise。
+      for (const resolve of pendingPermissions.values()) resolve("deny");
+      pendingPermissions.clear();
       harness.runtime.abort();
     },
 

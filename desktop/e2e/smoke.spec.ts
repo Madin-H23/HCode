@@ -164,6 +164,22 @@ test('E2E 冒烟 ④：会话面——列表/新建/attach 恢复/继续追问',
   }
 })
 
+test('E2E P1-②：abort 收口权限对话框', async () => {
+  const { app, win, workdir } = await launchApp({ script: 'permission' })
+  try {
+    await win.getByTestId('input').fill('写一次')
+    await win.getByTestId('send').click()
+    await expect(win.getByTestId('perm-dialog')).toBeVisible({ timeout: 20000 })
+
+    await win.getByTestId('stop').click()
+    await expect(win.getByTestId('perm-dialog')).toHaveCount(0, { timeout: 10000 })
+    await expect(win.getByTestId('status')).toContainText('idle', { timeout: 10000 })
+    expect(fs.existsSync(path.join(workdir, 'hcode-perm-3.txt'))).toBe(false)
+  } finally {
+    await app.close()
+  }
+})
+
 test('E2E P1-①：edit 卡片 +N -M 与展开 diff', async () => {
   const { app, win, workdir } = await launchApp({ script: 'edit' })
   try {

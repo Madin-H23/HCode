@@ -137,6 +137,37 @@ describe("HarnessBridge（主进程桥）", () => {
     expect(fs.existsSync(path.join(workdir, "denied.txt"))).toBe(false);
   }, 30000);
 
+  it("abort 收口：挂起权限全量 deny、pending 表清空、prompt 正常结束", async () => {
+    const perms: PermissionRequestPayload[] = [];
+    const bridge = await createHarnessBridge(
+      { projectRoot: workdir, mock: true },
+      { onEvent: () => {}, onStatus: () => {}, onPermission: (p) => perms.push(p) },
+    );
+    const { harness } = bridge;
+    cleanups.push(harness.shutdown());
+
+    harness.models.mockHandle!.setResponses([
+      fauxAssistantMessage([fauxToolCall("write", { path: "abort.txt", content: "x" })]),
+      fauxAssistantMessage("done"),
+    ]);
+    const run = bridge.prompt("写");
+    await vi.waitFor(() => expect(perms.length).toBe(1));
+
+    bridge.abort();
+    await expect(run).resolves.toBeUndefined();
+
+    // 挂起表已清：再次应答同一 id 必须抛错
+    expect(() => bridge.respondPermission(perms[0]!.id, "once")).toThrow(/无此权限/);
+
+    // 工具未落盘，结果为错误（denied 或被上游 aborted 检查顶掉）
+    const results = harness.runtime.agent.state.messages.filter(
+      (m) => (m as { role?: string }).role === "toolResult",
+    ) as Array<{ isError?: boolean; content?: unknown }>;
+    expect(results.length).toBeGreaterThanOrEqual(1);
+    expect(results[0]!.isError).toBe(true);
+    expect(fs.existsSync(path.join(workdir, "abort.txt"))).toBe(false);
+  }, 30000);
+
   it("attach：新桥恢复历史转录（桌面端会话面依赖）", async () => {
     const first = await createHarnessBridge(
       { projectRoot: workdir, mock: true, session: { mode: "new" } },

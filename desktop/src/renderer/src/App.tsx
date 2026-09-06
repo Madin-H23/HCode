@@ -192,7 +192,11 @@ export default function App() {
       chatRef.current = reduceChatEvent(chatRef.current, payload.event)
       setItems(chatRef.current.items)
     })
-    const offStatus = window.hcode.onStatus(setStatus)
+    const offStatus = window.hcode.onStatus((s) => {
+      setStatus(s)
+      // 空闲化（正常完成或停止收口）时权限对话框必然不该存在——abort 已在主进程侧全量 deny。
+      if (!s.busy) setPermissions([])
+    })
     const offWorkspace = window.hcode.onWorkspace((p) => {
       setWorkspace(p.projectRoot)
       chatRef.current = initialChatState
@@ -504,7 +508,7 @@ export default function App() {
           发送
         </button>
         <button
-          style={styles.button}
+          style={{ ...styles.button, position: "relative", zIndex: 50 }}
           data-testid="stop"
           disabled={!busy}
           onClick={() => void window.hcode.abort().catch(() => {})}
