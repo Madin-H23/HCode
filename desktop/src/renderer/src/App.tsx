@@ -198,6 +198,7 @@ export default function App() {
       chatRef.current = initialChatState
       setItems([])
       setPermissions([])
+      setExpandedDiffs(new Set())
     })
     const offPermission = window.hcode.onPermission((request) =>
       setPermissions((prev) => [...prev, request]),
