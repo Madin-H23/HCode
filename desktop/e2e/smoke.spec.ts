@@ -5,7 +5,7 @@ import os from 'node:os'
 import path from 'node:path'
 
 interface LaunchOptions {
-  script?: 'tool' | 'permission'
+  script?: 'tool' | 'permission' | 'edit'
 }
 
 /** 统一的 E2E 装配：mock 模型 + 隔离 TINYCODE_HOME/userData + 可选工具脚本注入口。 */
@@ -159,6 +159,31 @@ test('E2E 冒烟 ④：会话面——列表/新建/attach 恢复/继续追问',
     // 追加写回 attach 的那个 JSONL；新增的唯一文件是 new-session 的空会话
     expect(jsonlAfter).toHaveLength(2)
     expect(jsonlAfter).toContain(jsonlBefore[0]!)
+  } finally {
+    await app.close()
+  }
+})
+
+test('E2E P1-①：edit 卡片 +N -M 与展开 diff', async () => {
+  const { app, win, workdir } = await launchApp({ script: 'edit' })
+  try {
+    fs.writeFileSync(path.join(workdir, 'calc.js'), 'const add = (a, b) => a - b;\n')
+
+    await win.getByTestId('input').fill('修复 calc.js')
+    await win.getByTestId('send').click()
+    await expect(win.getByTestId('perm-dialog')).toBeVisible({ timeout: 20000 })
+    await win.getByTestId('perm-once').click()
+
+    const card = win.getByTestId('tool-card')
+    await expect(card).toHaveCount(1, { timeout: 20000 })
+    await expect(card).toHaveAttribute('data-state', 'ok')
+    await expect(card).toContainText('+1')
+    await expect(card).toContainText('-1')
+
+    await win.getByTestId('diff-toggle').click()
+    await expect(win.getByTestId('diff-view')).toContainText('a + b')
+    await win.getByTestId('diff-toggle').click()
+    await expect(win.getByTestId('diff-view')).toHaveCount(0)
   } finally {
     await app.close()
   }

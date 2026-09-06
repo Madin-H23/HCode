@@ -122,6 +122,50 @@ describe("reduceChatEvent（聊天流归约）", () => {
     expect(card.durationMs).toBe(2000);
   });
 
+  it("edit/write diff 统计提取与无 details 降级", () => {
+    // edit：details 带 diff 与统计
+    let s = reduceChatEvent(initialChatState, {
+      type: "tool_execution_start", toolCallId: "e1", toolName: "edit", args: { path: "a.js" },
+    } as unknown as AgentEvent, T0);
+    s = reduceChatEvent(s, {
+      type: "tool_execution_end", toolCallId: "e1", isError: false,
+      result: {
+        content: [{ type: "text", text: "updated (+2 -1)" }],
+        details: { path: "a.js", additions: 2, deletions: 1, replacements: 1, diff: "+new\n-old\n keep" },
+      },
+    } as unknown as AgentEvent, T0 + 10);
+    const editCard = s.items[0] as Extract<typeof s.items[number], { kind: "tool" }>;
+    expect(editCard.additions).toBe(2);
+    expect(editCard.deletions).toBe(1);
+    expect(editCard.diff).toBe("+new\n-old\n keep");
+    expect(editCard.created).toBeUndefined();
+
+    // write：只有统计与 created，无 diff
+    s = reduceChatEvent(s, {
+      type: "tool_execution_start", toolCallId: "w1", toolName: "write", args: { path: "n.txt" },
+    } as unknown as AgentEvent, T0);
+    s = reduceChatEvent(s, {
+      type: "tool_execution_end", toolCallId: "w1", isError: false,
+      result: { content: [], details: { path: "n.txt", created: true, bytes: 5, additions: 5, deletions: 0 } },
+    } as unknown as AgentEvent, T0 + 10);
+    const writeCard = s.items[1] as Extract<typeof s.items[number], { kind: "tool" }>;
+    expect(writeCard.additions).toBe(5);
+    expect(writeCard.created).toBe(true);
+    expect(writeCard.diff).toBeUndefined();
+
+    // details 缺失 → 全部降级 undefined（如 bash）
+    s = reduceChatEvent(s, {
+      type: "tool_execution_start", toolCallId: "b1", toolName: "bash", args: { command: "ls" },
+    } as unknown as AgentEvent, T0);
+    s = reduceChatEvent(s, {
+      type: "tool_execution_end", toolCallId: "b1", isError: false,
+      result: { content: [{ type: "text", text: "out" }] },
+    } as unknown as AgentEvent, T0 + 10);
+    const bashCard = s.items[2] as Extract<typeof s.items[number], { kind: "tool" }>;
+    expect(bashCard.additions).toBeUndefined();
+    expect(bashCard.diff).toBeUndefined();
+  });
+
   it("纯 toolCall 助手消息不留空气泡（start 不推、end 移除，TUI 同语义）", () => {
     const scripted = fauxAssistantMessage([fauxToolCall("read", { path: "package.json" })]);
     let s = initialChatState;

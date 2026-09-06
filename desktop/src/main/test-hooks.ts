@@ -13,6 +13,12 @@ export function armDebugMockScript(bridge: HarnessBridge, text: string): void {
       fauxAssistantMessage([fauxToolCall("read", { path: "package.json" })]),
       fauxAssistantMessage("读取完成：package.json 已检查。"),
     ]);
+  } else if (process.env.HCODE_TEST_MOCK_SCRIPT === "edit") {
+    // 脚本化一次 edit（工作区需预置目标文件），驱动 diff 卡片渲染。
+    bridge.armMockMessages([
+      fauxAssistantMessage([fauxToolCall("edit", { path: "calc.js", oldText: "a - b", newText: "a + b" })]),
+      fauxAssistantMessage("已修复"),
+    ]);
   } else if (process.env.HCODE_TEST_MOCK_SCRIPT === "permission") {
     // 脚本化一次写盘（write 走 ASK 闸门），路径随 prompt 文本变化 → 不同审批族。
     bridge.armMockMessages([

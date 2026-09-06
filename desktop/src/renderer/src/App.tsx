@@ -82,6 +82,29 @@ const styles = {
   running: { color: "#d2a8ff" },
   stopped: { color: "#d29922" },
   toolDetail: { marginTop: 4, whiteSpace: "pre-wrap" as const, wordBreak: "break-word" as const },
+  diffAdd: { color: "#7ee787" },
+  diffDel: { color: "#ff7b72" },
+  diffView: {
+    marginTop: 6,
+    fontSize: 11,
+    lineHeight: 1.5,
+    backgroundColor: "#111114",
+    borderRadius: 6,
+    padding: 8,
+    maxHeight: 260,
+    overflowY: "auto" as const,
+    whiteSpace: "pre" as const,
+    fontFamily: "Consolas, monospace",
+    margin: "6px 0 0",
+  },
+  linkBtn: {
+    background: "transparent",
+    border: "none",
+    color: "#58a6ff",
+    cursor: "pointer",
+    fontSize: 11,
+    padding: 0,
+  },
   inputRow: { display: "flex", gap: 8, padding: "12px 16px", borderTop: "1px solid #2c2c34" },
   textarea: {
     flex: 1,
@@ -160,6 +183,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null)
   const [permissions, setPermissions] = useState<PermissionRequestPayload[]>([])
   const [sessions, setSessions] = useState<SessionSummary[]>([])
+  const [expandedDiffs, setExpandedDiffs] = useState<Set<number>>(new Set())
   const chatRef = useRef<ChatState>(initialChatState)
   const messagesRef = useRef<HTMLDivElement>(null)
 
@@ -194,6 +218,15 @@ export default function App() {
       .listSessions()
       .then((r) => setSessions(r.sessions))
       .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)))
+  }
+
+  const toggleDiff = (id: number): void => {
+    setExpandedDiffs((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
   }
 
   const respond = (request: PermissionRequestPayload, outcome: PromptOutcome): void => {
@@ -365,9 +398,38 @@ export default function App() {
               <div style={styles.toolHeader}>
                 <span style={styles.toolName}>{item.name}</span>
                 <span style={{ color: "#6d6d78" }}>{item.argsSummary}</span>
+                {item.additions != null && (
+                  <span>
+                    <span style={styles.diffAdd}>+{item.additions}</span>{" "}
+                    <span style={styles.diffDel}>-{item.deletions ?? 0}</span>
+                  </span>
+                )}
                 <span style={stateStyle(item.state)}>{stateLabel(item.state, item.durationMs)}</span>
+                {item.diff && (
+                  <button style={styles.linkBtn} data-testid="diff-toggle" onClick={() => toggleDiff(item.id)}>
+                    {expandedDiffs.has(item.id) ? "收起 diff" : "展开 diff"}
+                  </button>
+                )}
               </div>
               {item.detail && <div style={styles.toolDetail}>{item.detail}</div>}
+              {item.diff && expandedDiffs.has(item.id) && (
+                <pre style={styles.diffView} data-testid="diff-view">
+                  {item.diff.split("\n").map((line, i) => (
+                    <div
+                      key={i}
+                      style={{
+                        color: line.startsWith("+")
+                          ? "#7ee787"
+                          : line.startsWith("-")
+                            ? "#ff7b72"
+                            : "#8b8b96",
+                      }}
+                    >
+                      {line}
+                    </div>
+                  ))}
+                </pre>
+              )}
             </div>
           ),
         )}
