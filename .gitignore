@@ -13,3 +13,4 @@ dist/
 
 # zread working state (in-repo copy lives in docs/wiki)
 .zread/
+ocr-*.json
