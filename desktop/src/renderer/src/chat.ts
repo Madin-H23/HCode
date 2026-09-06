@@ -22,6 +22,13 @@ export interface ToolCard {
   argsSummary: string;
   state: "running" | "ok" | "error" | "stopped";
   detail?: string;
+  /** edit/write 的写盘统计（来自 result.details）。 */
+  additions?: number;
+  deletions?: number;
+  /** edit 现成的 unified diff 字符串（renderDiff 产物）；write 无。 */
+  diff?: string;
+  /** write 新建文件标记。 */
+  created?: boolean;
   durationMs?: number;
   startedAt: number;
 }
@@ -93,6 +100,24 @@ export function extractToolText(result: unknown): string {
       .join("")
   }
   return ""
+}
+
+/** edit/write 的 details 防御性提取（details 缺失/形状不符时全部降级为 undefined）。 */
+export function extractToolDetails(result: unknown): {
+  additions?: number;
+  deletions?: number;
+  diff?: string;
+  created?: boolean;
+} {
+  const details = (result as { details?: unknown } | undefined)?.details
+  if (typeof details !== "object" || details === null) return {}
+  const d = details as Record<string, unknown>
+  const out: ReturnType<typeof extractToolDetails> = {}
+  if (typeof d.additions === "number") out.additions = d.additions
+  if (typeof d.deletions === "number") out.deletions = d.deletions
+  if (typeof d.diff === "string" && d.diff.length > 0) out.diff = d.diff
+  if (d.created === true) out.created = true
+  return out
 }
 
 function lastStreamingAssistantIndex(items: ChatItem[]): number {
@@ -171,12 +196,17 @@ export function reduceChatEvent(state: ChatState, event: AgentEvent, now: number
       }
     }
     case "tool_execution_end": {
+      const stats = extractToolDetails(event.result)
       const items = state.items.map((item) =>
         item.kind === "tool" && item.toolCallId === event.toolCallId && item.state === "running"
           ? {
               ...item,
               state: event.isError ? ("error" as const) : ("ok" as const),
               detail: shorten(extractToolText(event.result), 200) || undefined,
+              additions: stats.additions,
+              deletions: stats.deletions,
+              diff: stats.diff,
+              created: stats.created,
               durationMs: now - item.startedAt,
             }
           : item,

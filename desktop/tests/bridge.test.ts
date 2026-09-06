@@ -63,6 +63,42 @@ describe("HarnessBridge（主进程桥）", () => {
     expect(status.permissionMode).toBe("ask");
     expect(status.projectRoot).toBe(workdir);
     expect(status.model).not.toBe("");
+    expect(typeof status.tokens).toBe("number");
+    expect(status.tokens).toBeGreaterThanOrEqual(0);
+    expect(status.contextWindow).toBeGreaterThan(0);
+  }, 30000);
+
+  it("prompt 后 status.tokens 增长（上下文估算联动）", async () => {
+    const bridge = await createHarnessBridge(
+      { projectRoot: workdir, mock: true },
+      { onEvent: () => {}, onStatus: () => {} },
+    );
+    const { harness } = bridge;
+    cleanups.push(harness.shutdown());
+
+    const before = bridge.status().tokens;
+    bridge.armMockScript("这是一条足够长的回复内容用来推高上下文估算。");
+    await bridge.prompt("请回复一段较长的话");
+    const after = bridge.status().tokens;
+    expect(after).toBeGreaterThan(before);
+  }, 30000);
+
+  it("模型列表含 mock，热切换后 status.modelId 联动", async () => {
+    const statuses: BridgeStatus[] = [];
+    const bridge = await createHarnessBridge(
+      { projectRoot: workdir, mock: true },
+      { onEvent: () => {}, onStatus: (s) => statuses.push(s) },
+    );
+    cleanups.push(bridge.harness.shutdown());
+
+    const models = await bridge.listModels();
+    const mockEntry = models.find((m) => m.provider === "mock");
+    expect(mockEntry).toBeDefined();
+    expect(mockEntry!.name).toContain("Mock");
+
+    await bridge.setModel("mock", "tinycode-mock");
+    expect(bridge.status().modelId).toBe("mock/tinycode-mock");
+    expect(statuses.at(-1)!.modelId).toBe("mock/tinycode-mock");
   }, 30000);
 
   it("abort 经桥可达：idle 安全调用；生成中调用循环照常收尾且 busy 归零", async () => {
@@ -135,6 +171,37 @@ describe("HarnessBridge（主进程桥）", () => {
     expect(results[0]!.isError).toBe(true);
     expect(JSON.stringify(results[0]!.content)).toMatch(/denied by user/);
     expect(fs.existsSync(path.join(workdir, "denied.txt"))).toBe(false);
+  }, 30000);
+
+  it("abort 收口：挂起权限全量 deny、pending 表清空、prompt 正常结束", async () => {
+    const perms: PermissionRequestPayload[] = [];
+    const bridge = await createHarnessBridge(
+      { projectRoot: workdir, mock: true },
+      { onEvent: () => {}, onStatus: () => {}, onPermission: (p) => perms.push(p) },
+    );
+    const { harness } = bridge;
+    cleanups.push(harness.shutdown());
+
+    harness.models.mockHandle!.setResponses([
+      fauxAssistantMessage([fauxToolCall("write", { path: "abort.txt", content: "x" })]),
+      fauxAssistantMessage("done"),
+    ]);
+    const run = bridge.prompt("写");
+    await vi.waitFor(() => expect(perms.length).toBe(1));
+
+    bridge.abort();
+    await expect(run).resolves.toBeUndefined();
+
+    // 挂起表已清：再次应答同一 id 必须抛错
+    expect(() => bridge.respondPermission(perms[0]!.id, "once")).toThrow(/无此权限/);
+
+    // 工具未落盘，结果为错误（denied 或被上游 aborted 检查顶掉）
+    const results = harness.runtime.agent.state.messages.filter(
+      (m) => (m as { role?: string }).role === "toolResult",
+    ) as Array<{ isError?: boolean; content?: unknown }>;
+    expect(results.length).toBeGreaterThanOrEqual(1);
+    expect(results[0]!.isError).toBe(true);
+    expect(fs.existsSync(path.join(workdir, "abort.txt"))).toBe(false);
   }, 30000);
 
   it("attach：新桥恢复历史转录（桌面端会话面依赖）", async () => {

@@ -5,7 +5,7 @@ import os from 'node:os'
 import path from 'node:path'
 
 interface LaunchOptions {
-  script?: 'tool' | 'permission'
+  script?: 'tool' | 'permission' | 'permission-multi' | 'edit'
 }
 
 /** 统一的 E2E 装配：mock 模型 + 隔离 TINYCODE_HOME/userData + 可选工具脚本注入口。 */
@@ -53,6 +53,8 @@ test('E2E 冒烟 ①：选工作区 → 发消息 → 流式回复定稿', async
     await expect(win.getByTestId('msg-user')).toContainText('你好', { timeout: 20000 })
     await expect(win.getByTestId('messages')).toContainText('（mock）收到')
     await expect(win.getByTestId('messages').locator('[data-streaming="true"]')).toHaveCount(0)
+    // P1-T3：状态行含上下文用量（上限未知时只显示 ~Nk）
+    await expect(win.getByTestId('status')).toContainText('ctx ~', { timeout: 10000 })
 
     // 会话落盘：JSONL 真相源已在 TINYCODE_HOME/sessions 下生成
     const sessions = fs.readdirSync(path.join(home, 'sessions'))
@@ -159,6 +161,84 @@ test('E2E 冒烟 ④：会话面——列表/新建/attach 恢复/继续追问',
     // 追加写回 attach 的那个 JSONL；新增的唯一文件是 new-session 的空会话
     expect(jsonlAfter).toHaveLength(2)
     expect(jsonlAfter).toContain(jsonlBefore[0]!)
+  } finally {
+    await app.close()
+  }
+})
+
+test('E2E P1-③：模型下拉含 mock 且选择后状态行联动', async () => {
+  const { app, win } = await launchApp()
+  try {
+    const select = win.getByTestId('model-select')
+    await expect(select.locator('option')).toHaveCount(1, { timeout: 15000 })
+    await expect(select.locator('option')).toContainText('TinyCode Mock')
+    await select.selectOption({ index: 0 })
+    await expect(win.getByTestId('status')).toContainText('TinyCode Mock', { timeout: 10000 })
+    await expect(win.getByTestId('error')).toHaveCount(0)
+  } finally {
+    await app.close()
+  }
+})
+
+test('E2E P1-②：abort 收口权限对话框', async () => {
+  const { app, win, workdir } = await launchApp({ script: 'permission' })
+  try {
+    await win.getByTestId('input').fill('写一次')
+    await win.getByTestId('send').click()
+    await expect(win.getByTestId('perm-dialog')).toBeVisible({ timeout: 20000 })
+
+    await win.getByTestId('stop').click()
+    await expect(win.getByTestId('perm-dialog')).toHaveCount(0, { timeout: 10000 })
+    await expect(win.getByTestId('status')).toContainText('idle', { timeout: 10000 })
+    expect(fs.existsSync(path.join(workdir, 'hcode-perm-3.txt'))).toBe(false)
+  } finally {
+    await app.close()
+  }
+})
+
+test('E2E P1-①：edit 卡片 +N -M 与展开 diff', async () => {
+  const { app, win, workdir } = await launchApp({ script: 'edit' })
+  try {
+    fs.writeFileSync(path.join(workdir, 'calc.js'), 'const add = (a, b) => a - b;\n')
+
+    await win.getByTestId('input').fill('修复 calc.js')
+    await win.getByTestId('send').click()
+    await expect(win.getByTestId('perm-dialog')).toBeVisible({ timeout: 20000 })
+    await win.getByTestId('perm-once').click()
+
+    const card = win.getByTestId('tool-card')
+    await expect(card).toHaveCount(1, { timeout: 20000 })
+    await expect(card).toHaveAttribute('data-state', 'ok')
+    await expect(card).toContainText('+1')
+    await expect(card).toContainText('-1')
+
+    await win.getByTestId('diff-toggle').click()
+    await expect(win.getByTestId('diff-view')).toContainText('a + b')
+    await win.getByTestId('diff-toggle').click()
+    await expect(win.getByTestId('diff-view')).toHaveCount(0)
+  } finally {
+    await app.close()
+  }
+})
+
+test('E2E P1-④：权限队列逐项审批', async () => {
+  const { app, win, workdir } = await launchApp({ script: 'permission-multi' })
+  try {
+    await win.getByTestId('input').fill('写两个文件')
+    await win.getByTestId('send').click()
+    await expect(win.getByTestId('perm-dialog')).toBeVisible({ timeout: 20000 })
+    await expect(win.getByTestId('perm-dialog')).toContainText('multi-a.txt')
+
+    // 第 1 项：允许一次 → 顺序前进到第 2 项（顺序 toolCall 的权限逐个挂起）
+    await win.getByTestId('perm-once').click()
+    await expect(win.getByTestId('perm-dialog')).toContainText('multi-b.txt', { timeout: 10000 })
+
+    // 第 2 项：Esc = 拒当前项（末项 → 对话框关闭）
+    await win.keyboard.press('Escape')
+    await expect(win.getByTestId('perm-dialog')).toHaveCount(0, { timeout: 10000 })
+
+    expect(fs.existsSync(path.join(workdir, 'multi-a.txt'))).toBe(true)
+    expect(fs.existsSync(path.join(workdir, 'multi-b.txt'))).toBe(false)
   } finally {
     await app.close()
   }

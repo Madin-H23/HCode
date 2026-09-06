@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react"
-import type { AgentEventEnvelope, BridgeStatus, PermissionRequestPayload, PromptOutcome, SessionSummary } from "./hcode.d"
+import type { AgentEventEnvelope, BridgeStatus, ModelInfo, PermissionRequestPayload, PromptOutcome, SessionSummary } from "./hcode.d"
 import { initialChatState, reduceChatEvent, type ChatItem, type ChatState } from "./chat"
 
 const styles = {
@@ -82,6 +82,29 @@ const styles = {
   running: { color: "#d2a8ff" },
   stopped: { color: "#d29922" },
   toolDetail: { marginTop: 4, whiteSpace: "pre-wrap" as const, wordBreak: "break-word" as const },
+  diffAdd: { color: "#7ee787" },
+  diffDel: { color: "#ff7b72" },
+  diffView: {
+    marginTop: 6,
+    fontSize: 11,
+    lineHeight: 1.5,
+    backgroundColor: "#111114",
+    borderRadius: 6,
+    padding: 8,
+    maxHeight: 260,
+    overflowY: "auto" as const,
+    whiteSpace: "pre" as const,
+    fontFamily: "Consolas, monospace",
+    margin: "6px 0 0",
+  },
+  linkBtn: {
+    background: "transparent",
+    border: "none",
+    color: "#58a6ff",
+    cursor: "pointer",
+    fontSize: 11,
+    padding: 0,
+  },
   inputRow: { display: "flex", gap: 8, padding: "12px 16px", borderTop: "1px solid #2c2c34" },
   textarea: {
     flex: 1,
@@ -160,6 +183,8 @@ export default function App() {
   const [error, setError] = useState<string | null>(null)
   const [permissions, setPermissions] = useState<PermissionRequestPayload[]>([])
   const [sessions, setSessions] = useState<SessionSummary[]>([])
+  const [expandedDiffs, setExpandedDiffs] = useState<Set<number>>(new Set())
+  const [models, setModels] = useState<ModelInfo[]>([])
   const chatRef = useRef<ChatState>(initialChatState)
   const messagesRef = useRef<HTMLDivElement>(null)
 
@@ -168,12 +193,17 @@ export default function App() {
       chatRef.current = reduceChatEvent(chatRef.current, payload.event)
       setItems(chatRef.current.items)
     })
-    const offStatus = window.hcode.onStatus(setStatus)
+    const offStatus = window.hcode.onStatus((s) => {
+      setStatus(s)
+      // 空闲化（正常完成或停止收口）时权限对话框必然不该存在——abort 已在主进程侧全量 deny。
+      if (!s.busy) setPermissions([])
+    })
     const offWorkspace = window.hcode.onWorkspace((p) => {
       setWorkspace(p.projectRoot)
       chatRef.current = initialChatState
       setItems([])
       setPermissions([])
+      setExpandedDiffs(new Set())
     })
     const offPermission = window.hcode.onPermission((request) =>
       setPermissions((prev) => [...prev, request]),
@@ -181,6 +211,7 @@ export default function App() {
     void window.hcode.status().then((s) => s && setWorkspace(s.projectRoot))
     void window.hcode.recentWorkspaces().then((r) => setRecents(r.recents))
     void loadSessions()
+    void loadModels()
     return () => {
       offEvent()
       offStatus()
@@ -194,6 +225,31 @@ export default function App() {
       .listSessions()
       .then((r) => setSessions(r.sessions))
       .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)))
+  }
+
+  const loadModels = (): void => {
+    void window.hcode
+      .listModels()
+      .then(setModels)
+      .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)))
+  }
+
+  const switchModel = (modelId: string): void => {
+    const [provider, id] = modelId.split("/")
+    if (!provider || !id) return
+    setError(null)
+    void window.hcode
+      .setModel(provider, id)
+      .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)))
+  }
+
+  const toggleDiff = (id: number): void => {
+    setExpandedDiffs((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
   }
 
   const respond = (request: PermissionRequestPayload, outcome: PromptOutcome): void => {
@@ -292,6 +348,8 @@ export default function App() {
           {status
             ? `${busy ? "busy" : "idle"} · ${status.model} · 权限 ${status.permissionMode} · ${
                 status.sessionId ? `会话 ${status.sessionId.slice(0, 8)}` : "无会话"
+              } · ctx ~${Math.round(status.tokens / 1000)}k${
+                status.contextWindow ? `/${Math.round(status.contextWindow / 1000)}k` : ""
               }`
             : "未装配"}
         </p>
@@ -309,6 +367,20 @@ export default function App() {
         >
           新会话
         </button>
+        <select
+          style={{ ...styles.button, maxWidth: 220 }}
+          data-testid="model-select"
+          disabled={busy}
+          value={status?.modelId ?? ""}
+          onChange={(e) => switchModel(e.target.value)}
+        >
+          {models.length === 0 && <option value={status?.modelId ?? ""}>{status?.model ?? "模型"}</option>}
+          {models.map((m) => (
+            <option key={`${m.provider}/${m.id}`} value={`${m.provider}/${m.id}`}>
+              {m.name}
+            </option>
+          ))}
+        </select>
         <select
           style={{ ...styles.button, width: 200 }}
           data-testid="session-select"
@@ -365,9 +437,38 @@ export default function App() {
               <div style={styles.toolHeader}>
                 <span style={styles.toolName}>{item.name}</span>
                 <span style={{ color: "#6d6d78" }}>{item.argsSummary}</span>
+                {item.additions != null && (
+                  <span>
+                    <span style={styles.diffAdd}>+{item.additions}</span>{" "}
+                    <span style={styles.diffDel}>-{item.deletions ?? 0}</span>
+                  </span>
+                )}
                 <span style={stateStyle(item.state)}>{stateLabel(item.state, item.durationMs)}</span>
+                {item.diff && (
+                  <button style={styles.linkBtn} data-testid="diff-toggle" onClick={() => toggleDiff(item.id)}>
+                    {expandedDiffs.has(item.id) ? "收起 diff" : "展开 diff"}
+                  </button>
+                )}
               </div>
               {item.detail && <div style={styles.toolDetail}>{item.detail}</div>}
+              {item.diff && expandedDiffs.has(item.id) && (
+                <pre style={styles.diffView} data-testid="diff-view">
+                  {item.diff.split("\n").map((line, i) => (
+                    <div
+                      key={i}
+                      style={{
+                        color: line.startsWith("+")
+                          ? "#7ee787"
+                          : line.startsWith("-")
+                            ? "#ff7b72"
+                            : "#8b8b96",
+                      }}
+                    >
+                      {line}
+                    </div>
+                  ))}
+                </pre>
+              )}
             </div>
           ),
         )}
@@ -383,7 +484,8 @@ export default function App() {
         <div style={styles.overlay} data-testid="perm-dialog">
           <div style={styles.dialog}>
             <p style={styles.dialogTitle}>
-              权限确认{permissions.length > 1 ? `（${permissions.length} 项待确认）` : ""}
+              权限确认
+              {permissions.length > 1 ? `（排队 ${permissions.length} 项）` : ""}
             </p>
             <p style={styles.dialogTool}>{permissions[0]!.toolName}</p>
             <p style={styles.dialogTool}>{permissions[0]!.title}</p>
@@ -441,7 +543,7 @@ export default function App() {
           发送
         </button>
         <button
-          style={styles.button}
+          style={{ ...styles.button, position: "relative", zIndex: 50 }}
           data-testid="stop"
           disabled={!busy}
           onClick={() => void window.hcode.abort().catch(() => {})}

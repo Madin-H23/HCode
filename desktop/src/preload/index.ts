@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer, type IpcRendererEvent } from "electron";
 import type {
   BridgeStatus,
   EventEnvelope,
+  ModelInfo,
   PermissionRequestPayload,
   WorkspacePickResult,
 } from "../main/bridge";
@@ -35,6 +36,9 @@ const api = {
   }> => ipcRenderer.invoke("hcode/session/attach", id),
   respondPermission: (id: number, outcome: PromptOutcome): Promise<void> =>
     ipcRenderer.invoke("hcode/permission/respond", { id, outcome }),
+  listModels: (): Promise<ModelInfo[]> => ipcRenderer.invoke("hcode/model/list"),
+  setModel: (provider: string, id: string): Promise<{ ok: boolean }> =>
+    ipcRenderer.invoke("hcode/model/set", { provider, id }),
   onAgentEvent: (cb: (payload: EventEnvelope) => void): (() => void) => {
     const listener = (_e: IpcRendererEvent, payload: EventEnvelope): void => cb(payload);
     ipcRenderer.on("hcode:agent-event", listener);

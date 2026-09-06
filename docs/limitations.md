@@ -10,14 +10,19 @@
 - 错误分类薄：除 `ModelNotConfiguredError` 外均为裸 Error，桌面端以文案直出
 - 上游测试在 Windows 有一个固有失败（POSIX 路径断言），见 issue #11
 
-## 桌面端已知取舍（P1 候选）
+## 桌面端已知取舍（P1 批次后余项）
 
+- 权限排队指示仅显示同时挂起数（「排队 N 项」）：顺序 toolCall 的权限逐个挂起，批次总数不可预知（P1-T5 实证修正）
+- 模型热切换的差值断言在 mock 单模型装配下无差值（真实多模型切换需真凭据场景验证）
 - attach 历史渲染依赖「workspace 重置事件先于 IPC resolve 抵达」的时序（Electron 当前有序保证；稳妥做法是 sessionId 比对）
-- abort 时挂起的权限对话框不自动撤销；多项 ASK 队列只显示首项 + 计数
-- IME 组合输入中按 Esc 会触发「关闭即拒绝」
+- 多项 ASK 真并发堆积的 UI 分支（排队指示）缺 E2E 实测（顺序场景已测，上游并行批处理场景未触发）
 - 会话列表为「一致性优先」：每次查询全量 rebuild 索引（JSONL 解析仍全量），性能/全文检索留待后续
-- `modelFlag` 已穿线但无 UI（模型切换下拉属 P1）；模型选择沿用 config/env 链
+- `textOf` 主进程反向引用渲染层纯函数（P1+ 下沉 shared）；应用图标仍为 Electron 默认
 - 索引层用 node:sqlite（Electron ≥35）；降级 Electron 版本会失去索引能力
+
+## P1 已清挂账（2026-09-07）
+
+~~abort 时挂起的权限对话框不自动撤销~~（P1-T2：abort 全量 deny + 对话框清空）；~~多项 ASK 队列只显示首项~~（P1-T5：逐项审批+排队指示）；~~模型切换无 UI~~（P1-T4：顶栏热切换）；~~写盘无 diff 预览~~（P1-T1）；~~上下文用量不可见~~（P1-T3）。
 
 ## 明确不做（Out of Scope，见 SPEC #1）
 

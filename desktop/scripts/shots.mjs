@@ -73,3 +73,21 @@ async function launch(extra = {}) {
 }
 
 console.log('shots done:', fs.readdirSync(outDir).join(', '))
+
+// 状态4：edit 卡片 diff 展开态
+{
+  const { app, win, workdir } = await launch({ HCODE_TEST_MOCK_SCRIPT: 'edit' })
+  await win.getByTestId('open-workspace').click()
+  await win.waitForSelector('[data-testid="input"]:not([disabled])', { timeout: 15000 })
+  fs.writeFileSync(path.join(workdir, 'calc.js'), 'const add = (a, b) => a - b;\n')
+  await win.getByTestId('input').fill('修复 calc.js')
+  await win.getByTestId('send').click()
+  await win.getByTestId('perm-dialog').waitFor({ state: 'visible', timeout: 20000 })
+  await win.getByTestId('perm-once').click()
+  await win.waitForSelector('[data-testid="tool-card"][data-state="ok"]', { timeout: 20000 })
+  await win.getByTestId('diff-toggle').click()
+  await win.waitForTimeout(300)
+  await win.screenshot({ path: `${outDir}/4-diff-expanded.png` })
+  await app.close()
+}
+console.log('shot 4 done')
