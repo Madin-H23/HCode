@@ -136,23 +136,3 @@ console.log('shot 4 done')
   await app.close()
 }
 console.log('shots 5/6 done')
-
-// 状态7：子代理面板（先派子代理）
-{
-  const app = await _electron.launch({
-    args: ['out/main/index.js'],
-    env: { ...baseEnv, HCODE_TEST_WORKSPACE: fs.mkdtempSync(path.join(os.tmpdir(), 'hcode-shots-a-')), HCODE_TEST_MOCK_SCRIPT: 'subagent' }
-  })
-  const win = await app.firstWindow()
-  await win.waitForTimeout(800)
-  await win.getByTestId('open-workspace').click()
-  await win.waitForSelector('[data-testid="input"]:not([disabled])', { timeout: 15000 })
-  await win.getByTestId('input').fill('派一个子代理盘点')
-  await win.getByTestId('send').click()
-  await win.getByTestId('agents-toggle').click()
-  await win.getByTestId('agent-row').first().waitFor({ state: 'visible', timeout: 20000 })
-  await win.waitForTimeout(3200)
-  await win.screenshot({ path: `${outDir}/7-subagent-panel.png` })
-  await app.close()
-}
-console.log('shot 7 done')

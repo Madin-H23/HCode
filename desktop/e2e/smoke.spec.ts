@@ -308,6 +308,7 @@ test('E2E P2-③：子代理面板显示 worker 与运行数', async () => {
     await expect(row).toContainText('scout')
 
     await expect(win.getByTestId('status')).toContainText(/子代理 \d/, { timeout: 20000 })
+    await win.screenshot({ path: 'shots/7-subagent-panel.png' })
   } finally {
     await app.close()
   }
