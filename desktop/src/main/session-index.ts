@@ -17,16 +17,6 @@ interface SessionRow {
   message_count: number;
 }
 
-interface SessionRow {
-  id: string;
-  cwd: string;
-  model: string;
-  title: string | null;
-  created_at: string;
-  modified_at: string;
-  message_count: number;
-}
-
 export interface SearchHit {
   sessionId: string;
   title?: string;

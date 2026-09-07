@@ -126,6 +126,8 @@ function registerIpc(): void {
 
   ipcMain.handle("hcode/session/list", () => {
     // ADR-0002：上游 list() 是唯一真相源；每次列表都经「rebuild→查询」保证与 JSONL 一致。
+    // 注意：此处的 rebuild 不带 loadTexts（会清空 messages 文本表）——全文搜索在
+    // hcode/session/search 里按需重建文本索引，避免列表查询全量重读所有 JSONL。
     const truth = upstreamSessionList();
     index?.rebuild(truth);
     return {

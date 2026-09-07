@@ -359,6 +359,8 @@ export default function App() {
   const attachSession = (id: string): void => {
     if (!id) return
     setError(null)
+    setSearchResults(null)
+    setSearchQuery("")
     void window.hcode
       .attachSession(id)
       .then((r) => {
@@ -475,7 +477,7 @@ export default function App() {
           {searchResults.length === 0 && <p style={styles.placeholder}>无匹配会话</p>}
           {searchResults.map((hit) => (
             <button
-              key={`${hit.sessionId}-${hit.snippet}`}
+              key={`${hit.sessionId}-${hit.snippet}-${searchResults.indexOf(hit)}`}
               style={styles.searchHit}
               data-testid="search-hit"
               onClick={() => openSearchHit(hit)}

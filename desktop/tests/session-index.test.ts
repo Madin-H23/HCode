@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { SessionIndex } from "../src/main/session-index";
+import { SessionManager } from "../../src/session/manager.js";
 import type { SessionSummary } from "../../src/session/types";
 
 let home: string;
@@ -97,4 +98,30 @@ describe("SessionIndex.search（P2 会话全文搜索）", () => {
     expect(index.search("任意")).toEqual([]);
     index.close();
   });
+});
+
+it("撕裂行 JSONL 不污染索引（P2-T1 直测：经上游 load 的容忍）", () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "hcode-torn-"));
+  const mgr = new SessionManager(path.join(home, "sessions"));
+  const id = mgr.start(home, "mock");
+  const good = JSON.stringify({ type: "message", message: { role: "user", content: "搜索关键词甲" } });
+  const torn = '{"type":"message","message":{"role":"user","content":"被截断的半';
+  fs.appendFileSync(path.join(home, "sessions", `${id}.jsonl`), good + "\n" + torn);
+
+  const index = new SessionIndex(dbPath);
+  const sessions = mgr.list();
+  const texts = new Map<string, string[]>();
+  for (const s of sessions) {
+    texts.set(
+      s.id,
+      (mgr.load(s.id)?.messages ?? [])
+        .filter((m: { role?: string }) => m.role === "user" || m.role === "assistant")
+        .map((m: { content?: unknown }) => JSON.stringify(m.content ?? "")),
+    );
+  }
+  index.rebuild(sessions, (sid) => texts.get(sid) ?? []);
+  expect(index.count()).toBe(1);
+  expect(index.search("搜索关键词甲").length).toBe(1);
+  expect(index.search("被截断的半")).toEqual([]);
+  index.close();
 });
