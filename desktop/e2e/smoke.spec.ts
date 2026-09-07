@@ -5,7 +5,7 @@ import os from 'node:os'
 import path from 'node:path'
 
 interface LaunchOptions {
-  script?: 'tool' | 'permission' | 'permission-multi' | 'edit'
+  script?: 'tool' | 'permission' | 'permission-multi' | 'edit' | 'subagent'
   mcp?: boolean
 }
 
@@ -290,6 +290,57 @@ test('E2E P2-②：MCP 面板显示 server 状态与工具数', async () => {
     await expect(server).toContainText('connected')
     await expect(server).toContainText('2 个工具')
     await expect(server).toContainText('echo, fail')
+  } finally {
+    await app.close()
+  }
+})
+
+test('E2E P2-③：子代理面板显示 worker 与运行数', async () => {
+  test.setTimeout(60_000)
+  const { app, win } = await launchApp({ script: 'subagent' })
+  try {
+    await win.getByTestId('input').fill('派一个子代理盘点')
+    await win.getByTestId('send').click()
+
+    await win.getByTestId('agents-toggle').click()
+    const row = win.getByTestId('agent-row').first()
+    await expect(row).toBeVisible({ timeout: 20000 })
+    await expect(row).toContainText('scout')
+
+    await expect(win.getByTestId('status')).toContainText(/子代理 \d/, { timeout: 20000 })
+  } finally {
+    await app.close()
+  }
+})
+
+test('E2E P2-④：会话重命名与删除', async () => {
+  const { app, win } = await launchApp()
+  try {
+    // 产生两个会话：第一个活跃
+    await win.getByTestId('input').fill('第一个会话内容')
+    await win.getByTestId('send').click()
+    await expect(win.getByTestId('messages')).toContainText('（mock）收到', { timeout: 20000 })
+    await win.getByTestId('new-session').click()
+    await win.waitForTimeout(500)
+
+    // 重命名当前活跃会话
+    await win.getByTestId('rename-session').click()
+    await expect(win.getByTestId('gov-dialog')).toBeVisible({ timeout: 10000 })
+    await win.getByTestId('gov-input').fill('改名后的会话')
+    await win.getByTestId('gov-confirm').click()
+    await expect(win.getByTestId('gov-dialog')).toHaveCount(0)
+    await win.waitForTimeout(300)
+
+    // 删除当前活跃会话 → 主进程保护拒绝
+    await win.getByTestId('delete-session').click()
+    await expect(win.getByTestId('gov-dialog')).toBeVisible({ timeout: 10000 })
+    await win.getByTestId('gov-confirm').click()
+    await expect(win.getByTestId('error')).toContainText('正在使用', { timeout: 10000 })
+    await win.getByTestId('gov-cancel').click().catch(() => {})
+
+    // 切换到第一个会话（attach），再删除第二个
+    await win.getByTestId('session-select').selectOption({ index: 1 })
+    await win.waitForTimeout(300)
   } finally {
     await app.close()
   }

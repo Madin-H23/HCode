@@ -44,6 +44,15 @@ export interface McpServerInfo {
   tools: string[];
 }
 
+export interface SubAgentSummary {
+  id: string;
+  name: string;
+  task: string;
+  status: string;
+  durationMs?: number;
+  report?: string;
+}
+
 export interface BridgeSink {
   onEvent(envelope: EventEnvelope): void;
   onStatus(status: BridgeStatus): void;
@@ -63,6 +72,8 @@ export interface HarnessBridge {
   setModel(provider: string, id: string): Promise<void>;
   /** MCP 服务器状态快照（未装配 MCP 时为空数组）。 */
   listMcp(): Array<McpServerInfo>;
+  /** 子代理监督快照（运行数/上限/worker 报告）。 */
+  subagentReports(): { running: number; max: number; workers: SubAgentSummary[] };
   /** 应答一条权限 ASK；id 无效时抛错。 */
   respondPermission(id: number, outcome: PromptOutcome): void;
   /** 当前是否 mock 模型装配（调试脚本注入口的判据）。 */
@@ -224,6 +235,20 @@ export async function createHarnessBridge(
         error: s.error,
         tools: s.status === "connected" ? mcp.toolsOf(s.name).map((t) => t.name) : [],
       }));
+    },
+
+    subagentReports(): { running: number; max: number; workers: SubAgentSummary[] } {
+      const sub = harness.subAgents;
+      if (!sub) return { running: 0, max: 3, workers: [] };
+      const workers = sub.reports().map((w) => ({
+        id: w.id,
+        name: w.name,
+        task: w.task,
+        status: w.status,
+        durationMs: w.durationMs,
+        report: w.report ? String(w.report).slice(0, 300) : undefined,
+      }));
+      return { running: sub.runningCount, max: 3, workers };
     },
 
     armMockScript(text: string): void {

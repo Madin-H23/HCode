@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react"
-import type { AgentEventEnvelope, BridgeStatus, ModelInfo, PermissionRequestPayload, PromptOutcome, McpServerInfo, SearchHit, SessionSummary } from "./hcode.d"
+import type { AgentEventEnvelope, BridgeStatus, ModelInfo, PermissionRequestPayload, PromptOutcome, McpServerInfo, SearchHit, SubAgentSummary, SessionSummary } from "./hcode.d"
 import { initialChatState, reduceChatEvent, type ChatItem, type ChatState } from "./chat"
 
 const styles = {
@@ -206,9 +206,14 @@ export default function App() {
   const [permissions, setPermissions] = useState<PermissionRequestPayload[]>([])
   const [sessions, setSessions] = useState<SessionSummary[]>([])
   const [expandedDiffs, setExpandedDiffs] = useState<Set<number>>(new Set())
+  const [govTarget, setGovTarget] = useState<string | null>(null)
+  const [govMode, setGovMode] = useState<"rename" | "delete" | null>(null)
+  const [govTitle, setGovTitle] = useState("")
   const [models, setModels] = useState<ModelInfo[]>([])
   const [mcpServers, setMcpServers] = useState<McpServerInfo[]>([])
   const [mcpOpen, setMcpOpen] = useState(false)
+  const [agents, setAgents] = useState<{ running: number; max: number; workers: SubAgentSummary[] } | null>(null)
+  const [agentsOpen, setAgentsOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
   const [searchResults, setSearchResults] = useState<SearchHit[] | null>(null)
   const chatRef = useRef<ChatState>(initialChatState)
@@ -255,6 +260,25 @@ export default function App() {
       .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)))
   }
 
+  useEffect(() => {
+    if (!workspace) return
+    const t = setInterval(() => {
+      void window.hcode
+        .listAgents()
+        .then((next) =>
+          // 上游 reports() 只含运行中 worker；保留最后非空快照作为本会话派驻记录
+          setAgents((prev) => (next.workers.length > 0 || !prev || prev.workers.length === 0 ? next : prev)),
+        )
+        .catch(() => {})
+    }, 3000)
+    return () => clearInterval(t)
+  }, [workspace])
+
+  const toggleAgents = (): void => {
+    setAgentsOpen((v) => !v)
+    loadAgents()
+  }
+
   const toggleMcp = (): void => {
     setError(null)
     if (!mcpOpen) {
@@ -264,6 +288,46 @@ export default function App() {
         .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)))
     }
     setMcpOpen((v) => !v)
+  }
+
+  const loadAgents = (): void => {
+    void window.hcode
+      .listAgents()
+      .then(setAgents)
+      .catch(() => {})
+  }
+
+  const openGov = (mode: "rename" | "delete"): void => {
+    const id = status?.sessionId
+    if (!id) {
+      setError("当前无活跃会话")
+      return
+    }
+    setGovTarget(id)
+    setGovMode(mode)
+    setGovTitle(sessions.find((s) => s.id === id)?.title ?? "")
+    setError(null)
+  }
+
+  const submitGov = (): void => {
+    if (!govTarget || !govMode) return
+    setError(null)
+    const call =
+      govMode === "rename"
+        ? window.hcode.renameSession(govTarget, govTitle.trim())
+        : window.hcode.deleteSession(govTarget)
+    void call
+      .then(() => {
+        setGovTarget(null)
+        setGovMode(null)
+        if (govMode === "delete") {
+          // 删除的是当前活跃会话之外才有意义（活跃受保护）；其他路径刷新列表
+          loadSessions()
+        } else {
+          loadSessions()
+        }
+      })
+      .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)))
   }
 
   const loadModels = (): void => {
@@ -407,7 +471,7 @@ export default function App() {
           {status
             ? `${busy ? "busy" : "idle"} · ${status.model} · 权限 ${status.permissionMode} · ${
                 status.sessionId ? `会话 ${status.sessionId.slice(0, 8)}` : "无会话"
-              } · ctx ~${Math.round(status.tokens / 1000)}k${
+              } · ${agents && agents.workers.length > 0 ? `子代理 ${agents.running}/${agents.max} · ` : ""}ctx ~${Math.round(status.tokens / 1000)}k${
                 status.contextWindow ? `/${Math.round(status.contextWindow / 1000)}k` : ""
               }`
             : "未装配"}
@@ -454,11 +518,30 @@ export default function App() {
             </option>
           ))}
         </select>
+        <button
+          style={styles.button}
+          data-testid="rename-session"
+          disabled={!status?.sessionId || busy}
+          onClick={() => openGov("rename")}
+        >
+          重命名
+        </button>
+        <button
+          style={styles.button}
+          data-testid="delete-session"
+          disabled={!status?.sessionId || busy}
+          onClick={() => openGov("delete")}
+        >
+          删除
+        </button>
         <button style={styles.button} data-testid="sessions-refresh" disabled={busy} onClick={loadSessions}>
           刷新
         </button>
         <button style={styles.button} data-testid="mcp-toggle" onClick={toggleMcp}>
           MCP
+        </button>
+        <button style={styles.button} data-testid="agents-toggle" onClick={toggleAgents}>
+          子代理{agents && agents.running > 0 ? ` ${agents.running}/${agents.max}` : ""}
         </button>
         <input
           style={{ ...styles.button, width: 160 }}
@@ -489,6 +572,23 @@ export default function App() {
           )
         })}
       </div>
+
+      {agentsOpen && (
+        <div style={styles.searchPanel} data-testid="agents-panel">
+          {(!agents || agents.workers.length === 0) && <p style={styles.placeholder}>无子代理</p>}
+          {agents?.workers.map((w) => (
+            <div key={w.id} style={styles.searchHit} data-testid="agent-row">
+              <span style={styles.toolName}>{w.name}</span>
+              <span style={{ color: w.status === "running" ? "#d2a8ff" : w.status === "completed" ? "#7ee787" : "#ff7b72" }}>
+                {w.status}
+              </span>
+              <span style={{ color: "#6d6d78" }}>{w.task}</span>
+              {w.durationMs != null && <span style={{ color: "#6d6d78" }}>{(w.durationMs / 1000).toFixed(1)}s</span>}
+              {w.report && <span style={{ color: "#8b8b96" }}>{w.report.slice(0, 120)}</span>}
+            </div>
+          ))}
+        </div>
+      )}
 
       {mcpOpen && (
         <div style={styles.searchPanel} data-testid="mcp-panel">
@@ -589,6 +689,44 @@ export default function App() {
         <p style={styles.errorLine} data-testid="error">
           {error}
         </p>
+      )}
+
+      {govTarget && govMode && (
+        <div style={styles.overlay} data-testid="gov-dialog">
+          <div style={styles.dialog}>
+            <p style={styles.dialogTitle}>{govMode === "rename" ? "重命名会话" : "删除会话"}</p>
+            {govMode === "rename" && (
+              <input
+                style={{ ...styles.textarea, height: 36 }}
+                data-testid="gov-input"
+                value={govTitle}
+                onChange={(e) => setGovTitle(e.target.value)}
+              />
+            )}
+            {govMode === "delete" && (
+              <p style={styles.dialogReason}>将删除该会话的 JSONL 文件，不可恢复。确认删除？</p>
+            )}
+            <div style={styles.dialogRow}>
+              <button
+                style={styles.button}
+                data-testid="gov-cancel"
+                onClick={() => {
+                  setGovTarget(null)
+                  setGovMode(null)
+                }}
+              >
+                取消
+              </button>
+              <button
+                style={styles.button}
+                data-testid={govMode === "rename" ? "gov-confirm" : "gov-confirm"}
+                onClick={submitGov}
+              >
+                {govMode === "rename" ? "重命名" : "确认删除"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {permissions.length > 0 && (
