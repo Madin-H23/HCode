@@ -1,186 +1,18 @@
 import { useEffect, useRef, useState } from "react"
-import type { AgentEventEnvelope, BridgeStatus, ModelInfo, PermissionRequestPayload, PromptOutcome, McpServerInfo, SearchHit, SubAgentSummary, SessionSummary } from "./hcode.d"
+import type {
+  AgentEventEnvelope,
+  BridgeStatus,
+  McpServerInfo,
+  ModelInfo,
+  PermissionRequestPayload,
+  PromptOutcome,
+  SearchHit,
+  SessionSummary,
+  SubAgentSummary,
+} from "./hcode.d"
 import { initialChatState, reduceChatEvent, type ChatItem, type ChatState } from "./chat"
 
-const styles = {
-  app: {
-    display: "flex",
-    flexDirection: "column" as const,
-    height: "100vh",
-    color: "#e6e6ea",
-    backgroundColor: "#1b1b1f",
-    fontFamily: 'system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif',
-  },
-  header: {
-    display: "flex",
-    alignItems: "center",
-    gap: 12,
-    padding: "10px 16px",
-    borderBottom: "1px solid #2c2c34",
-    flexWrap: "wrap" as const,
-  },
-  brand: { fontSize: 20, margin: 0, letterSpacing: 2 },
-  workspace: { color: "#9a9aa4", fontSize: 12, margin: 0, wordBreak: "break-all" as const },
-  status: { marginLeft: "auto", color: "#9a9aa4", fontSize: 12, margin: 0 },
-  toolbar: { display: "flex", gap: 8, padding: "8px 16px", alignItems: "center", flexWrap: "wrap" as const },
-  button: {
-    padding: "6px 14px",
-    borderRadius: 6,
-    border: "1px solid #3a3a44",
-    backgroundColor: "#26262e",
-    color: "#e6e6ea",
-    cursor: "pointer",
-    fontSize: 13,
-  },
-  chip: {
-    padding: "4px 10px",
-    borderRadius: 999,
-    border: "1px solid #3a3a44",
-    backgroundColor: "transparent",
-    color: "#b9b9c3",
-    cursor: "pointer",
-    fontSize: 11,
-    maxWidth: 260,
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap" as const,
-  },
-  messages: {
-    flex: 1,
-    overflowY: "auto" as const,
-    padding: "16px 24px",
-    display: "flex",
-    flexDirection: "column" as const,
-    gap: 10,
-  },
-  bubble: {
-    maxWidth: "78%",
-    padding: "8px 12px",
-    borderRadius: 10,
-    fontSize: 14,
-    lineHeight: 1.6,
-    whiteSpace: "pre-wrap" as const,
-    wordBreak: "break-word" as const,
-  },
-  user: { alignSelf: "flex-end", backgroundColor: "#2f4a6e" },
-  assistant: { alignSelf: "flex-start", backgroundColor: "#26262e" },
-  placeholder: { alignSelf: "center", color: "#6d6d78", fontSize: 13, margin: "auto 0" },
-  toolCard: {
-    alignSelf: "flex-start",
-    maxWidth: "78%",
-    border: "1px solid #33333d",
-    borderRadius: 8,
-    backgroundColor: "#202027",
-    padding: "6px 10px",
-    fontSize: 12,
-    color: "#b9b9c3",
-  },
-  toolHeader: { display: "flex", gap: 8, alignItems: "baseline" },
-  toolName: { color: "#e6e6ea", fontWeight: 600 },
-  ok: { color: "#7ee787" },
-  error: { color: "#ff7b72" },
-  running: { color: "#d2a8ff" },
-  stopped: { color: "#d29922" },
-  toolDetail: { marginTop: 4, whiteSpace: "pre-wrap" as const, wordBreak: "break-word" as const },
-  diffAdd: { color: "#7ee787" },
-  diffDel: { color: "#ff7b72" },
-  diffView: {
-    marginTop: 6,
-    fontSize: 11,
-    lineHeight: 1.5,
-    backgroundColor: "#111114",
-    borderRadius: 6,
-    padding: 8,
-    maxHeight: 260,
-    overflowY: "auto" as const,
-    whiteSpace: "pre" as const,
-    fontFamily: "Consolas, monospace",
-    margin: "6px 0 0",
-  },
-  linkBtn: {
-    background: "transparent",
-    border: "none",
-    color: "#58a6ff",
-    cursor: "pointer",
-    fontSize: 11,
-    padding: 0,
-  },
-  inputRow: { display: "flex", gap: 8, padding: "12px 16px", borderTop: "1px solid #2c2c34" },
-  textarea: {
-    flex: 1,
-    resize: "none" as const,
-    height: 64,
-    borderRadius: 8,
-    border: "1px solid #3a3a44",
-    backgroundColor: "#111114",
-    color: "#e6e6ea",
-    padding: 10,
-    fontSize: 14,
-  },
-  errorLine: { color: "#ff7b72", fontSize: 12, padding: "0 16px 8px", margin: 0 },
-  overlay: {
-    position: "fixed" as const,
-    inset: 0,
-    backgroundColor: "rgba(0,0,0,0.55)",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    zIndex: 40,
-  },
-  dialog: {
-    width: "min(520px, 92vw)",
-    backgroundColor: "#232329",
-    border: "1px solid #3a3a44",
-    borderRadius: 12,
-    padding: 20,
-    display: "flex",
-    flexDirection: "column" as const,
-    gap: 10,
-  },
-  dialogTitle: { margin: 0, fontSize: 16 },
-  dialogTool: { color: "#e6e6ea", fontWeight: 600 },
-  dialogBody: {
-    margin: 0,
-    fontSize: 13,
-    color: "#b9b9c3",
-    whiteSpace: "pre-wrap" as const,
-    maxHeight: 200,
-    overflowY: "auto" as const,
-    backgroundColor: "#111114",
-    borderRadius: 6,
-    padding: 8,
-  },
-  dialogReason: { margin: 0, fontSize: 12, color: "#d29922" },
-  dialogRow: { display: "flex", gap: 8, justifyContent: "flex-end" },
-  permHint: { fontSize: 11, color: "#6d6d78", margin: 0 },
-  searchPanel: {
-    padding: "8px 16px",
-    display: "flex",
-    flexDirection: "column" as const,
-    gap: 6,
-    borderBottom: "1px solid #2c2c34",
-    maxHeight: 200,
-    overflowY: "auto" as const,
-  },
-  searchHit: {
-    display: "flex",
-    gap: 10,
-    alignItems: "baseline",
-    background: "transparent",
-    border: "1px solid #33333d",
-    borderRadius: 6,
-    padding: "6px 10px",
-    color: "#b9b9c3",
-    cursor: "pointer",
-    fontSize: 12,
-    textAlign: "left" as const,
-  },
-}
-
 type CardState = "running" | "ok" | "error" | "stopped"
-
-const stateStyle = (state: CardState): (typeof styles)["ok" | "error" | "running" | "stopped"] =>
-  state === "ok" ? styles.ok : state === "error" ? styles.error : state === "stopped" ? styles.stopped : styles.running
 
 /** 权限理由查表翻译（对照 src/permissions/rules.ts 英文清单；渲染层只读映射，不改上游数据）。 */
 const reasonZh = (reason: string): string => {
@@ -375,12 +207,7 @@ export default function App() {
       .then(() => {
         setGovTarget(null)
         setGovMode(null)
-        if (govMode === "delete") {
-          // 删除的是当前活跃会话之外才有意义（活跃受保护）；其他路径刷新列表
-          loadSessions()
-        } else {
-          loadSessions()
-        }
+        loadSessions()
       })
       .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)))
   }
@@ -517,29 +344,36 @@ export default function App() {
   const busy = status?.busy ?? false
 
   return (
-    <div style={styles.app}>
-      <header style={styles.header}>
-        <h1 style={styles.brand}>HCode</h1>
-        <p style={styles.workspace} data-testid="workspace">
+    <div className="app">
+      <header className="header">
+        <h1 className="brand">HCode</h1>
+        <p className="workspace" data-testid="workspace">
           {workspace ?? "未选择工作区 —— 打开文件夹开始"}
         </p>
-        <p style={styles.status} data-testid="status">
-          {status
-            ? `${busy ? "busy" : "idle"} · ${status.model} · 权限 ${status.permissionMode} · ${
-                status.sessionId ? `会话 ${status.sessionId.slice(0, 8)}` : "无会话"
-              } · ${agents && agents.workers.length > 0 ? `子代理 ${agents.running}/${agents.max} · ` : ""}ctx ~${Math.round(status.tokens / 1000)}k${
-                status.contextWindow ? `/${Math.round(status.contextWindow / 1000)}k` : ""
-              }`
-            : "未装配"}
+        <p className="status" data-testid="status">
+          {status ? (
+            <>
+              <span className={`dot ${busy ? "busy" : "idle"}`} />
+              <span>
+                {busy ? "busy" : "idle"} · {status.model} · 权限 {status.permissionMode} ·{" "}
+                {status.sessionId ? `会话 ${status.sessionId.slice(0, 8)}` : "无会话"} ·{" "}
+                {agents && agents.workers.length > 0 ? `子代理 ${agents.running}/${agents.max} · ` : ""}
+                ctx ~{Math.round(status.tokens / 1000)}k
+                {status.contextWindow ? `/${Math.round(status.contextWindow / 1000)}k` : ""}
+              </span>
+            </>
+          ) : (
+            <span className="dot" /> // 炉心待燃
+          )}
         </p>
       </header>
 
-      <div style={styles.toolbar}>
-        <button style={styles.button} data-testid="open-workspace" onClick={openWorkspace}>
+      <div className="toolbar">
+        <button className="btn" data-testid="open-workspace" onClick={openWorkspace}>
           打开工作区
         </button>
         <button
-          style={styles.button}
+          className="btn"
           data-testid="new-session"
           disabled={!workspace || busy}
           onClick={newSession}
@@ -547,7 +381,7 @@ export default function App() {
           新会话
         </button>
         <select
-          style={{ ...styles.button, maxWidth: 220 }}
+          className="select"
           data-testid="model-select"
           disabled={busy}
           value={status?.modelId ?? ""}
@@ -560,47 +394,14 @@ export default function App() {
             </option>
           ))}
         </select>
-        <select
-          style={{ ...styles.button, width: 200 }}
-          data-testid="session-select"
-          disabled={busy}
-          value=""
-          onChange={(e) => attachSession(e.target.value)}
-        >
-          <option value="">恢复会话…</option>
-          {sessions.map((s) => (
-            <option key={s.id} value={s.id}>
-              {`${s.title ?? "(无标题)"} · ${new Date(s.modifiedAt).toLocaleString()} · ${s.cwd}`}
-            </option>
-          ))}
-        </select>
-        <button
-          style={styles.button}
-          data-testid="rename-session"
-          disabled={!status?.sessionId || busy}
-          onClick={() => openGov("rename")}
-        >
-          重命名
-        </button>
-        <button
-          style={styles.button}
-          data-testid="delete-session"
-          disabled={!status?.sessionId || busy}
-          onClick={() => openGov("delete")}
-        >
-          删除
-        </button>
-        <button style={styles.button} data-testid="sessions-refresh" disabled={busy} onClick={loadSessions}>
-          刷新
-        </button>
-        <button style={styles.button} data-testid="mcp-toggle" onClick={toggleMcp}>
+        <button className="btn" data-testid="mcp-toggle" onClick={toggleMcp}>
           MCP
         </button>
-        <button style={styles.button} data-testid="agents-toggle" onClick={toggleAgents}>
+        <button className="btn" data-testid="agents-toggle" onClick={toggleAgents}>
           子代理
         </button>
         <input
-          style={{ ...styles.button, width: 160 }}
+          className="input search-input"
           data-testid="search-input"
           placeholder="搜索会话内容…"
           value={searchQuery}
@@ -609,15 +410,34 @@ export default function App() {
             if (e.key === "Enter" && !e.nativeEvent.isComposing) runSearch()
           }}
         />
-        <button style={styles.button} data-testid="search-run" disabled={!searchQuery.trim()} onClick={runSearch}>
+        <button className="btn" data-testid="search-run" disabled={!searchQuery.trim()} onClick={runSearch}>
           搜索
+        </button>
+        <button
+          className="btn"
+          data-testid="rename-session"
+          disabled={!status?.sessionId || busy}
+          onClick={() => openGov("rename")}
+        >
+          重命名
+        </button>
+        <button
+          className="btn btn-danger"
+          data-testid="delete-session"
+          disabled={!status?.sessionId || busy}
+          onClick={() => openGov("delete")}
+        >
+          删除
+        </button>
+        <button className="btn" data-testid="sessions-refresh" disabled={busy} onClick={loadSessions}>
+          刷新
         </button>
         {recents.slice(0, 5).map((ws) => {
           const base = ws.split(/[\\/]/).filter(Boolean).pop() ?? ws
           return (
             <button
               key={ws}
-              style={styles.chip}
+              className="chip"
               data-testid="recent"
               title={ws}
               disabled={busy}
@@ -630,35 +450,37 @@ export default function App() {
       </div>
 
       {agentsOpen && (
-        <div style={styles.searchPanel} data-testid="agents-panel">
-          {(!agents || agents.workers.length === 0) && <p style={styles.placeholder}>无子代理</p>}
+        <div className="panel" data-testid="agents-panel">
+          {(!agents || agents.workers.length === 0) && <p className="panel-empty">无子代理</p>}
           {agents?.workers.map((w) => (
-            <div key={w.id} style={styles.searchHit} data-testid="agent-row">
-              <span style={styles.toolName}>{w.name}</span>
-              <span style={{ color: w.status === "running" ? "#d2a8ff" : w.status === "completed" ? "#7ee787" : "#ff7b72" }}>
+            <div key={w.id} className="panel-static" data-testid="agent-row">
+              <span className="panel-name">{w.name}</span>
+              <span
+                className={
+                  w.status === "running" ? "run" : w.status === "completed" ? "ok" : w.status === "error" ? "err" : "warn"
+                }
+              >
                 {w.status}
               </span>
-              <span style={{ color: "#6d6d78" }}>{w.task}</span>
-              {w.durationMs != null && <span style={{ color: "#6d6d78" }}>{(w.durationMs / 1000).toFixed(1)}s</span>}
-              {w.report && <span style={{ color: "#8b8b96" }}>{w.report.slice(0, 120)}</span>}
+              <span className="panel-snippet">{w.task}</span>
+              {w.durationMs != null && <span className="panel-snippet">{(w.durationMs / 1000).toFixed(1)}s</span>}
+              {w.report && <span className="panel-snippet">{w.report.slice(0, 120)}</span>}
             </div>
           ))}
         </div>
       )}
 
       {mcpOpen && (
-        <div style={styles.searchPanel} data-testid="mcp-panel">
-          {mcpServers.length === 0 && <p style={styles.placeholder}>未配置 MCP 服务器</p>}
+        <div className="panel" data-testid="mcp-panel">
+          {mcpServers.length === 0 && <p className="panel-empty">未配置 MCP 服务器</p>}
           {mcpServers.map((server) => (
-            <div key={server.name} style={styles.searchHit} data-testid="mcp-server">
-              <span style={styles.toolName}>{server.name}</span>
-              <span style={{ color: server.status === "connected" ? "#7ee787" : "#ff7b72" }}>
-                {server.status}
-              </span>
-              <span style={{ color: "#6d6d78" }}>{server.toolCount} 个工具</span>
-              {server.error && <span style={styles.errorLine}>{server.error}</span>}
+            <div key={server.name} className="panel-static" data-testid="mcp-server">
+              <span className="panel-name">{server.name}</span>
+              <span className={server.status === "connected" ? "ok" : "err"}>{server.status}</span>
+              <span className="panel-snippet">{server.toolCount} 个工具</span>
+              {server.error && <span className="panel-snippet err">{server.error}</span>}
               {server.tools.length > 0 && (
-                <span style={{ color: "#6d6d78" }}>工具: {server.tools.join(", ")}</span>
+                <span className="panel-tools">工具: {server.tools.join(", ")}</span>
               )}
             </div>
           ))}
@@ -666,105 +488,99 @@ export default function App() {
       )}
 
       {searchResults !== null && (
-        <div style={styles.searchPanel} data-testid="search-results">
-          {searchResults.length === 0 && <p style={styles.placeholder}>无匹配会话</p>}
-          {searchResults.map((hit) => (
+        <div className="panel" data-testid="search-results">
+          {searchResults.length === 0 && <p className="panel-empty">无匹配会话</p>}
+          {searchResults.map((hit, i) => (
             <button
-              key={`${hit.sessionId}-${hit.snippet}-${searchResults.indexOf(hit)}`}
-              style={styles.searchHit}
+              key={`${hit.sessionId}-${hit.snippet}-${i}`}
+              className="panel-row"
               data-testid="search-hit"
               onClick={() => openSearchHit(hit)}
             >
-              <span style={styles.toolName}>{hit.title ?? "（无标题会话）"}</span>
-              <span style={{ color: "#6d6d78" }}>{hit.snippet}</span>
+              <span className="panel-name">{hit.title ?? "（无标题会话）"}</span>
+              <span className="panel-snippet">{hit.snippet}</span>
             </button>
           ))}
         </div>
       )}
 
-      <div style={styles.messages} data-testid="messages" ref={messagesRef}>
-        {items.length === 0 && (
-          <p style={styles.placeholder}>
-            {workspace ? "向 Agent 描述你的任务…" : "选择工作区后，Agent 在该项目内工作。"}
-          </p>
-        )}
-        {items.map((item) =>
-          item.kind === "message" ? (
-            <div
-              key={item.id}
-              data-testid={`msg-${item.role}`}
-              data-streaming={item.streaming ? "true" : "false"}
-              style={{ ...styles.bubble, ...(item.role === "user" ? styles.user : styles.assistant) }}
-            >
-              {item.text || (item.streaming ? "▍" : "")}
-              {item.streaming && item.text ? " ▍" : ""}
-            </div>
-          ) : (
-            <div key={item.id} style={styles.toolCard} data-testid="tool-card" data-state={item.state}>
-              <div style={styles.toolHeader}>
-                <span style={styles.toolName}>{item.name}</span>
-                <span style={{ color: "#6d6d78" }}>{item.argsSummary}</span>
-                {item.additions != null && (
-                  <span>
-                    <span style={styles.diffAdd}>+{item.additions}</span>{" "}
-                    <span style={styles.diffDel}>-{item.deletions ?? 0}</span>
+      <div className="messages" data-testid="messages" ref={messagesRef}>
+        <div className="msg-col">
+          {items.length === 0 && (
+            <p className="placeholder">
+              {workspace ? "向 Agent 描述你的任务…" : "选择工作区后，Agent 在该项目内工作。"}
+            </p>
+          )}
+          {items.map((item) =>
+            item.kind === "message" ? (
+              <div
+                key={item.id}
+                data-testid={`msg-${item.role}`}
+                data-streaming={item.streaming ? "true" : "false"}
+                className={`bubble ${item.role === "user" ? "bubble-user" : "bubble-assistant"}`}
+              >
+                {item.text}
+              </div>
+            ) : (
+              <div key={item.id} className="tool-card" data-testid="tool-card" data-state={item.state}>
+                <div className="tool-head">
+                  <span className="tool-name">{item.name}</span>
+                  <span className="tool-args">{item.argsSummary}</span>
+                  {item.additions != null && (
+                    <span>
+                      <span className="diff-add">+{item.additions}</span>{" "}
+                      <span className="diff-del">-{item.deletions ?? 0}</span>
+                    </span>
+                  )}
+                  <span className={`card-state card-state-${item.state}`}>
+                    {stateLabel(item.state, item.durationMs)}
                   </span>
-                )}
-                <span style={stateStyle(item.state)}>{stateLabel(item.state, item.durationMs)}</span>
-                {item.diff && (
-                  <button style={styles.linkBtn} data-testid="diff-toggle" onClick={() => toggleDiff(item.id)}>
-                    {expandedDiffs.has(item.id) ? "收起 diff" : "展开 diff"}
-                  </button>
+                  {item.diff && (
+                    <button className="link-btn" data-testid="diff-toggle" onClick={() => toggleDiff(item.id)}>
+                      {expandedDiffs.has(item.id) ? "收起 diff" : "展开 diff"}
+                    </button>
+                  )}
+                </div>
+                {item.detail && <div className="tool-detail">{localizeDetail(item.detail)}</div>}
+                {item.diff && expandedDiffs.has(item.id) && (
+                  <pre className="diff-view" data-testid="diff-view">
+                    {item.diff.split("\n").map((line, i) => (
+                      <div key={i} className={line.startsWith("+") ? "add" : line.startsWith("-") ? "del" : undefined}>
+                        {line}
+                      </div>
+                    ))}
+                  </pre>
                 )}
               </div>
-              {item.detail && <div style={styles.toolDetail}>{localizeDetail(item.detail)}</div>}
-              {item.diff && expandedDiffs.has(item.id) && (
-                <pre style={styles.diffView} data-testid="diff-view">
-                  {item.diff.split("\n").map((line, i) => (
-                    <div
-                      key={i}
-                      style={{
-                        color: line.startsWith("+")
-                          ? "#7ee787"
-                          : line.startsWith("-")
-                            ? "#ff7b72"
-                            : "#8b8b96",
-                      }}
-                    >
-                      {line}
-                    </div>
-                  ))}
-                </pre>
-              )}
-            </div>
-          ),
-        )}
+            ),
+          )}
+        </div>
       </div>
 
       {error && (
-        <p style={styles.errorLine} data-testid="error">
+        <p className="error-line" data-testid="error">
           {error}
         </p>
       )}
 
       {govTarget && govMode && (
-        <div style={styles.overlay} data-testid="gov-dialog">
-          <div style={styles.dialog}>
-            <p style={styles.dialogTitle}>{govMode === "rename" ? "重命名会话" : "删除会话"}</p>
+        <div className="overlay" data-testid="gov-dialog">
+          <div className="dialog">
+            <p className="dialog-title">{govMode === "rename" ? "重命名会话" : "删除会话"}</p>
             {govMode === "rename" && (
               <input
-                style={{ ...styles.textarea, height: 36 }}
+                className="input gov-input"
                 data-testid="gov-input"
                 value={govTitle}
                 onChange={(e) => setGovTitle(e.target.value)}
               />
             )}
             {govMode === "delete" && (
-              <p style={styles.dialogReason}>将删除该会话的 JSONL 文件，不可恢复。确认删除？</p>
+              <p className="dialog-reason">将删除该会话的 JSONL 文件，不可恢复。确认删除？</p>
             )}
-            <div style={styles.dialogRow}>
+            <div className="dialog-row">
               <button
-                style={styles.button}
+                className="btn"
                 data-testid="gov-cancel"
                 onClick={() => {
                   setGovTarget(null)
@@ -773,11 +589,7 @@ export default function App() {
               >
                 取消
               </button>
-              <button
-                style={styles.button}
-                data-testid={govMode === "rename" ? "gov-confirm" : "gov-confirm"}
-                onClick={submitGov}
-              >
+              <button className="btn btn-danger" data-testid="gov-confirm" onClick={submitGov}>
                 {govMode === "rename" ? "重命名" : "确认删除"}
               </button>
             </div>
@@ -786,47 +598,39 @@ export default function App() {
       )}
 
       {permissions.length > 0 && (
-        <div style={styles.overlay} data-testid="perm-dialog">
-          <div style={styles.dialog}>
-            <p style={styles.dialogTitle}>
+        <div className="overlay" data-testid="perm-dialog">
+          <div className="dialog dialog-perm">
+            <p className="dialog-title">
               权限确认
               {permissions.length > 1 ? `（排队 ${permissions.length} 项）` : ""}
             </p>
-            <p style={styles.dialogTool}>{permissions[0]!.toolName}</p>
-            <p style={styles.dialogTool}>{permissions[0]!.title}</p>
-            {permissions[0]!.detail && <pre style={styles.dialogBody}>{permissions[0]!.detail}</pre>}
-            <p style={styles.dialogReason}>{reasonZh(permissions[0]!.reason)}</p>
-            <div style={styles.dialogRow}>
+            <p className="dialog-tool">{permissions[0]!.toolName}</p>
+            <p className="dialog-tool">{permissions[0]!.title}</p>
+            {permissions[0]!.detail && <pre className="dialog-body">{permissions[0]!.detail}</pre>}
+            <p className="dialog-reason">{reasonZh(permissions[0]!.reason)}</p>
+            <div className="dialog-row">
               <button
-                style={styles.button}
+                className="btn btn-danger"
                 data-testid="perm-deny"
                 onClick={() => respond(permissions[0]!, "deny")}
               >
                 拒绝
               </button>
-              <button
-                style={styles.button}
-                data-testid="perm-always"
-                onClick={() => respond(permissions[0]!, "always")}
-              >
+              <button className="btn" data-testid="perm-always" onClick={() => respond(permissions[0]!, "always")}>
                 总是允许
               </button>
-              <button
-                style={styles.button}
-                data-testid="perm-once"
-                onClick={() => respond(permissions[0]!, "once")}
-              >
+              <button className="btn" data-testid="perm-once" onClick={() => respond(permissions[0]!, "once")}>
                 允许一次
               </button>
             </div>
-            <p style={styles.permHint}>Esc 关闭视为拒绝 · 「总是允许」按工具+命令族记忆（仅本会话）</p>
+            <p className="perm-hint">Esc 关闭视为拒绝 · 「总是允许」按工具+命令族记忆（仅本会话）</p>
           </div>
         </div>
       )}
 
-      <div style={styles.inputRow}>
+      <div className="input-row">
         <textarea
-          style={styles.textarea}
+          className="textarea"
           data-testid="input"
           placeholder={workspace ? "输入任务，Enter 发送" : "先打开工作区"}
           value={input}
@@ -840,19 +644,14 @@ export default function App() {
           }}
         />
         <button
-          style={styles.button}
+          className="btn"
           data-testid="send"
           disabled={!workspace || busy || input.trim().length === 0}
           onClick={send}
         >
           发送
         </button>
-        <button
-          style={{ ...styles.button, position: "relative", zIndex: 50 }}
-          data-testid="stop"
-          disabled={!busy}
-          onClick={() => void window.hcode.abort().catch(() => {})}
-        >
+        <button className="btn btn-danger btn-stop" data-testid="stop" disabled={!busy} onClick={() => void window.hcode.abort().catch(() => {})}>
           停止
         </button>
       </div>

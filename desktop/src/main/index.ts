@@ -161,6 +161,7 @@ function registerIpc(): void {
     // 注意：此处的 rebuild 不带 loadTexts（会清空 messages 文本表）——全文搜索在
     // hcode/session/search 里按需重建文本索引，避免列表查询全量重读所有 JSONL。
     const truth = upstreamSessionList();
+    console.error('[dbg] list truth=', truth.length, 'home=', process.env.TINYCODE_HOME);
     index?.rebuild(truth);
     return {
       sessions: index?.list() ?? truth,
