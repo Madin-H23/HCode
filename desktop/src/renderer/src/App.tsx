@@ -182,6 +182,32 @@ type CardState = "running" | "ok" | "error" | "stopped"
 const stateStyle = (state: CardState): (typeof styles)["ok" | "error" | "running" | "stopped"] =>
   state === "ok" ? styles.ok : state === "error" ? styles.error : state === "stopped" ? styles.stopped : styles.running
 
+/** 权限理由查表翻译（对照 src/permissions/rules.ts 英文清单；渲染层只读映射，不改上游数据）。 */
+const reasonZh = (reason: string): string => {
+  const table: Array<[RegExp, string]> = [
+    [/read-only operation/i, "只读操作（工作区内）"],
+    [/accesses? .*outside/i, "访问工作区外路径"],
+    [/write outside/i, "写入工作区外路径"],
+    [/write modifies project files/i, "写入将修改工作区文件"],
+    [/modifies project files/i, "将修改工作区文件"],
+    [/catastrophic command refused/i, "危险命令已被策略拒绝"],
+    [/delete/i, "包含删除操作"],
+    [/spawn/i, "派生子代理"],
+  ]
+  for (const [re, zh] of table) {
+    if (re.test(reason)) return zh
+  }
+  return reason
+}
+
+/** 工具 detail 已知英文模式改写（read 头/bash 截断标记等；展示层只读替换）。 */
+const localizeDetail = (detail: string): string =>
+  detail
+    .replace(/(\d+) lines, showing (\d+)-(\d+)/, "共 $1 行，显示 $2-$3")
+    .replace(/\[output truncated: (\d+) characters omitted\]/, "[输出已截断：省略 $1 字符]")
+    .replace(/✗ exit (\d+)/, "✗ 退出码 $1")
+    .replace(/✓ exit (\d+)/, "✓ 退出码 $1")
+
 const stateLabel = (state: CardState, durationMs?: number): string => {
   const suffix = durationMs != null ? ` · ${(durationMs / 1000).toFixed(1)}s` : ""
   switch (state) {
@@ -223,6 +249,28 @@ export default function App() {
     const offEvent = window.hcode.onAgentEvent((payload: AgentEventEnvelope) => {
       chatRef.current = reduceChatEvent(chatRef.current, payload.event)
       setItems(chatRef.current.items)
+      // spawn_agent 结束事件携带 WorkerReport（details）——确定性捕获，轮询可能错过短生命周期
+      const ev = payload.event as {
+        type?: string
+        toolName?: string
+        result?: { details?: Record<string, unknown> }
+      }
+      if (ev.type === "tool_execution_end" && ev.toolName === "spawn_agent" && ev.result?.details) {
+        const d = ev.result.details
+        if (typeof d.id === "string") {
+          setAgents((prev) => {
+            const base = prev ?? { running: 1, max: 3, workers: [] }
+            const worker = {
+              id: String(d.id),
+              name: String(d.name ?? d.id),
+              task: String(d.task ?? ""),
+              status: typeof d.status === "string" ? d.status : "running",
+              durationMs: typeof d.durationMs === "number" ? d.durationMs : undefined,
+            }
+            return { ...base, workers: [...base.workers.filter((w) => w.id !== worker.id), worker] }
+          })
+        }
+      }
     })
     const offStatus = window.hcode.onStatus((s) => {
       setStatus(s)
@@ -266,8 +314,12 @@ export default function App() {
       void window.hcode
         .listAgents()
         .then((next) =>
-          // 上游 reports() 只含运行中 worker；保留最后非空快照作为本会话派驻记录
-          setAgents((prev) => (next.workers.length > 0 || !prev || prev.workers.length === 0 ? next : prev)),
+          // 上游 reports() 只含运行中 worker；按 id 合并保留历史派驻记录
+          setAgents((prev) => {
+            const map = new Map((prev?.workers ?? []).map((w) => [w.id, w]))
+            for (const w of next.workers) map.set(w.id, w)
+            return { running: next.running, max: next.max, workers: [...map.values()] }
+          }),
         )
         .catch(() => {})
     }, 3000)
@@ -366,7 +418,8 @@ export default function App() {
   useEffect(() => {
     if (permissions.length === 0) return
     const onKey = (e: KeyboardEvent): void => {
-      if (e.key === "Escape") {
+      // IME 组合中的 Escape 是取消候选词（keyCode 229 兼容），不当作拒绝
+      if (e.key === "Escape" && !e.isComposing && e.keyCode !== 229) {
         const first = permissions[0]
         if (first) respond(first, "deny")
       }
@@ -661,7 +714,7 @@ export default function App() {
                   </button>
                 )}
               </div>
-              {item.detail && <div style={styles.toolDetail}>{item.detail}</div>}
+              {item.detail && <div style={styles.toolDetail}>{localizeDetail(item.detail)}</div>}
               {item.diff && expandedDiffs.has(item.id) && (
                 <pre style={styles.diffView} data-testid="diff-view">
                   {item.diff.split("\n").map((line, i) => (
@@ -739,7 +792,7 @@ export default function App() {
             <p style={styles.dialogTool}>{permissions[0]!.toolName}</p>
             <p style={styles.dialogTool}>{permissions[0]!.title}</p>
             {permissions[0]!.detail && <pre style={styles.dialogBody}>{permissions[0]!.detail}</pre>}
-            <p style={styles.dialogReason}>{permissions[0]!.reason}</p>
+            <p style={styles.dialogReason}>{reasonZh(permissions[0]!.reason)}</p>
             <div style={styles.dialogRow}>
               <button
                 style={styles.button}
