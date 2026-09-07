@@ -110,6 +110,20 @@ function registerIpc(): void {
     return { ok: true as const };
   });
 
+  ipcMain.handle("hcode/session/search", (_e, query: unknown) => {
+    if (typeof query !== "string" || query.trim().length === 0) return { results: [] };
+    // 搜索前以真相源重建（含 messages 展开），保证新会话/新消息可被命中
+    const truth = upstreamSessionList();
+    index?.rebuild(truth, (id) => {
+      const loaded = new SessionManager(sessionsDir()).load(id);
+      const messages = loaded ? loaded.messages : [];
+      return messages
+        .filter((m) => m.role === "user" || m.role === "assistant")
+        .map((m) => textOf(m));
+    });
+    return { results: index?.search(query.trim()) ?? [] };
+  });
+
   ipcMain.handle("hcode/session/list", () => {
     // ADR-0002：上游 list() 是唯一真相源；每次列表都经「rebuild→查询」保证与 JSONL 一致。
     const truth = upstreamSessionList();

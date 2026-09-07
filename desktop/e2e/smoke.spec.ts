@@ -243,3 +243,25 @@ test('E2E P1-④：权限队列逐项审批', async () => {
     await app.close()
   }
 })
+
+test('E2E P2-①：会话全文搜索 → 点击恢复', async () => {
+  const { app, win } = await launchApp()
+  try {
+    const marker = 'P2搜索目标词'
+    await win.getByTestId('input').fill(`请记住：${marker}`)
+    await win.getByTestId('send').click()
+    await expect(win.getByTestId('messages')).toContainText(marker, { timeout: 20000 })
+
+    await win.getByTestId('new-session').click()
+    await win.getByTestId('search-input').fill(marker)
+    await win.getByTestId('search-run').click()
+    const hit = win.getByTestId('search-hit').first()
+    await expect(hit).toBeVisible({ timeout: 15000 })
+    await expect(hit).toContainText(marker)
+
+    await hit.click()
+    await expect(win.getByTestId('messages')).toContainText(marker, { timeout: 15000 })
+  } finally {
+    await app.close()
+  }
+})

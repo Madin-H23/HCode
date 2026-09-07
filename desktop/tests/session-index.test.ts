@@ -71,3 +71,30 @@ describe("SessionIndex（SQLite 索引层）", () => {
     index.close();
   });
 });
+
+describe("SessionIndex.search（P2 会话全文搜索）", () => {
+  it("rebuild 含文本 → LIKE 命中用户/助手文本、转义与无结果", () => {
+    const index = new SessionIndex(dbPath);
+    index.rebuild([summary("a", { title: "修复除零" }), summary("b")], (id) =>
+      id === "a" ? ["修复 utils.py 的除零 bug", "已把 a - b 改成 a + b 并跑通测试"] : ["无关会话内容"],
+    );
+
+    expect(index.search("除零").map((h) => h.sessionId)).toEqual(["a"]);
+    const hit = index.search("除零")[0]!;
+    expect(hit.title).toBe("修复除零");
+    expect(hit.snippet).toContain("除零");
+
+    // 特殊字符转义：100% 作为字面量查询不炸且不误命中
+    expect(index.search("100%")).toEqual([]);
+    // 无结果
+    expect(index.search("不存在的关键词xyz")).toEqual([]);
+    index.close();
+  });
+
+  it("rebuild 未提供 loadTexts 时 messages 表为空、search 返回空", () => {
+    const index = new SessionIndex(dbPath);
+    index.rebuild([summary("a")]);
+    expect(index.search("任意")).toEqual([]);
+    index.close();
+  });
+});

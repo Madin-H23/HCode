@@ -7,6 +7,9 @@ import type { BridgeStatus, EventEnvelope, PermissionRequestPayload, ModelInfo }
 import type { PromptOutcome } from "../../../src/permissions/manager";
 import type { SessionSummary } from "../../../src/session/types";
 
+export type { SearchHit } from "../../main/session-index";
+import type { SearchHit } from "../../main/session-index";
+
 export interface HcodeApi {
   version: string;
   prompt(text: string): Promise<void>;
@@ -17,6 +20,7 @@ export interface HcodeApi {
   recentWorkspaces(): Promise<{ recents: string[] }>;
   newSession(): Promise<{ ok: boolean }>;
   listSessions(): Promise<{ sessions: SessionSummary[]; currentSessionId: string | null }>;
+  searchSessions(query: string): Promise<{ results: SearchHit[] }>;
   attachSession(id: string): Promise<{
     ok: boolean;
     projectRoot: string;

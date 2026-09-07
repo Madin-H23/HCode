@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react"
-import type { AgentEventEnvelope, BridgeStatus, ModelInfo, PermissionRequestPayload, PromptOutcome, SessionSummary } from "./hcode.d"
+import type { AgentEventEnvelope, BridgeStatus, ModelInfo, PermissionRequestPayload, PromptOutcome, SearchHit, SessionSummary } from "./hcode.d"
 import { initialChatState, reduceChatEvent, type ChatItem, type ChatState } from "./chat"
 
 const styles = {
@@ -153,6 +153,28 @@ const styles = {
   dialogReason: { margin: 0, fontSize: 12, color: "#d29922" },
   dialogRow: { display: "flex", gap: 8, justifyContent: "flex-end" },
   permHint: { fontSize: 11, color: "#6d6d78", margin: 0 },
+  searchPanel: {
+    padding: "8px 16px",
+    display: "flex",
+    flexDirection: "column" as const,
+    gap: 6,
+    borderBottom: "1px solid #2c2c34",
+    maxHeight: 200,
+    overflowY: "auto" as const,
+  },
+  searchHit: {
+    display: "flex",
+    gap: 10,
+    alignItems: "baseline",
+    background: "transparent",
+    border: "1px solid #33333d",
+    borderRadius: 6,
+    padding: "6px 10px",
+    color: "#b9b9c3",
+    cursor: "pointer",
+    fontSize: 12,
+    textAlign: "left" as const,
+  },
 }
 
 type CardState = "running" | "ok" | "error" | "stopped"
@@ -185,6 +207,8 @@ export default function App() {
   const [sessions, setSessions] = useState<SessionSummary[]>([])
   const [expandedDiffs, setExpandedDiffs] = useState<Set<number>>(new Set())
   const [models, setModels] = useState<ModelInfo[]>([])
+  const [searchQuery, setSearchQuery] = useState("")
+  const [searchResults, setSearchResults] = useState<SearchHit[] | null>(null)
   const chatRef = useRef<ChatState>(initialChatState)
   const messagesRef = useRef<HTMLDivElement>(null)
 
@@ -308,10 +332,28 @@ export default function App() {
 
   const newSession = (): void => {
     setError(null)
+    setSearchResults(null)
+    setSearchQuery("")
     void window.hcode
       .newSession()
       .then(() => loadSessions())
       .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)))
+  }
+
+  const runSearch = (): void => {
+    const q = searchQuery.trim()
+    if (!q) return
+    setError(null)
+    void window.hcode
+      .searchSessions(q)
+      .then((r) => setSearchResults(r.results))
+      .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)))
+  }
+
+  const openSearchHit = (hit: SearchHit): void => {
+    setSearchResults(null)
+    setSearchQuery("")
+    attachSession(hit.sessionId)
   }
 
   const attachSession = (id: string): void => {
@@ -398,6 +440,19 @@ export default function App() {
         <button style={styles.button} data-testid="sessions-refresh" disabled={busy} onClick={loadSessions}>
           刷新
         </button>
+        <input
+          style={{ ...styles.button, width: 160 }}
+          data-testid="search-input"
+          placeholder="搜索会话内容…"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.nativeEvent.isComposing) runSearch()
+          }}
+        />
+        <button style={styles.button} data-testid="search-run" disabled={!searchQuery.trim()} onClick={runSearch}>
+          搜索
+        </button>
         {recents.slice(0, 5).map((ws) => {
           const base = ws.split(/[\\/]/).filter(Boolean).pop() ?? ws
           return (
@@ -414,6 +469,23 @@ export default function App() {
           )
         })}
       </div>
+
+      {searchResults !== null && (
+        <div style={styles.searchPanel} data-testid="search-results">
+          {searchResults.length === 0 && <p style={styles.placeholder}>无匹配会话</p>}
+          {searchResults.map((hit) => (
+            <button
+              key={`${hit.sessionId}-${hit.snippet}`}
+              style={styles.searchHit}
+              data-testid="search-hit"
+              onClick={() => openSearchHit(hit)}
+            >
+              <span style={styles.toolName}>{hit.title ?? "（无标题会话）"}</span>
+              <span style={{ color: "#6d6d78" }}>{hit.snippet}</span>
+            </button>
+          ))}
+        </div>
+      )}
 
       <div style={styles.messages} data-testid="messages" ref={messagesRef}>
         {items.length === 0 && (

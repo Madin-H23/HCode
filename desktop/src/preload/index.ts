@@ -7,6 +7,7 @@ import type {
   WorkspacePickResult,
 } from "../main/bridge";
 import type { PromptOutcome } from "../../../src/permissions/manager.js";
+import type { SearchHit } from "../main/session-index";
 import type { SessionSummary } from "../../../src/session/types.js";
 
 /**
@@ -27,6 +28,8 @@ const api = {
   newSession: (): Promise<{ ok: boolean }> => ipcRenderer.invoke("hcode/session/new"),
   listSessions: (): Promise<{ sessions: SessionSummary[]; currentSessionId: string | null }> =>
     ipcRenderer.invoke("hcode/session/list"),
+  searchSessions: (query: string): Promise<{ results: SearchHit[] }> =>
+    ipcRenderer.invoke("hcode/session/search", query),
   attachSession: (
     id: string
   ): Promise<{
