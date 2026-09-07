@@ -2,11 +2,14 @@ import { contextBridge, ipcRenderer, type IpcRendererEvent } from "electron";
 import type {
   BridgeStatus,
   EventEnvelope,
+  McpServerInfo,
   ModelInfo,
   PermissionRequestPayload,
+  SubAgentSummary,
   WorkspacePickResult,
 } from "../main/bridge";
 import type { PromptOutcome } from "../../../src/permissions/manager.js";
+import type { SearchHit } from "../main/session-index";
 import type { SessionSummary } from "../../../src/session/types.js";
 
 /**
@@ -27,6 +30,12 @@ const api = {
   newSession: (): Promise<{ ok: boolean }> => ipcRenderer.invoke("hcode/session/new"),
   listSessions: (): Promise<{ sessions: SessionSummary[]; currentSessionId: string | null }> =>
     ipcRenderer.invoke("hcode/session/list"),
+  searchSessions: (query: string): Promise<{ results: SearchHit[] }> =>
+    ipcRenderer.invoke("hcode/session/search", query),
+  renameSession: (id: string, title: string): Promise<{ ok: boolean }> =>
+    ipcRenderer.invoke("hcode/session/rename", { id, title }),
+  deleteSession: (id: string): Promise<{ ok: boolean }> =>
+    ipcRenderer.invoke("hcode/session/delete", id),
   attachSession: (
     id: string
   ): Promise<{
@@ -39,6 +48,9 @@ const api = {
   listModels: (): Promise<ModelInfo[]> => ipcRenderer.invoke("hcode/model/list"),
   setModel: (provider: string, id: string): Promise<{ ok: boolean }> =>
     ipcRenderer.invoke("hcode/model/set", { provider, id }),
+  listMcp: (): Promise<McpServerInfo[]> => ipcRenderer.invoke("hcode/mcp/list"),
+  listAgents: (): Promise<{ running: number; max: number; workers: SubAgentSummary[] }> =>
+    ipcRenderer.invoke("hcode/agents/list"),
   onAgentEvent: (cb: (payload: EventEnvelope) => void): (() => void) => {
     const listener = (_e: IpcRendererEvent, payload: EventEnvelope): void => cb(payload);
     ipcRenderer.on("hcode:agent-event", listener);

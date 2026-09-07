@@ -110,8 +110,56 @@ function registerIpc(): void {
     return { ok: true as const };
   });
 
+  ipcMain.handle("hcode/session/search", (_e, query: unknown) => {
+    if (typeof query !== "string" || query.trim().length === 0) return { results: [] };
+    // 搜索前以真相源重建（含 messages 展开），保证新会话/新消息可被命中
+    const truth = upstreamSessionList();
+    index?.rebuild(truth, (id) => {
+      const loaded = new SessionManager(sessionsDir()).load(id);
+      const messages = loaded ? loaded.messages : [];
+      return messages
+        .filter((m) => m.role === "user" || m.role === "assistant")
+        .map((m) => textOf(m));
+    });
+    return { results: index?.search(query.trim()) ?? [] };
+  });
+
+  ipcMain.handle("hcode/session/rename", (_e, payload: unknown) => {
+    const { id, title } = (payload ?? {}) as { id?: unknown; title?: unknown };
+    if (typeof id !== "string" || id.length === 0) throw new Error("需要会话 id");
+    if (typeof title !== "string" || title.trim().length === 0) throw new Error("需要非空标题");
+    const sessionsDirPath = path.join(sessionsDir(), `${id}.jsonl`);
+    if (!fs.existsSync(sessionsDirPath)) throw new Error(`找不到会话：${id}`);
+    // 读全文改 header 行 title（保留 createdAt/model/cwd），写回；撕裂行原样保留
+    const raw = fs.readFileSync(sessionsDirPath, "utf8");
+    const lines = raw.split("\n");
+    const header = JSON.parse(lines[0]!) as Record<string, unknown>;
+    if (header.type !== "session") throw new Error("会话文件头异常");
+    header.title = title.trim();
+    lines[0] = JSON.stringify(header);
+    fs.writeFileSync(sessionsDirPath, lines.join("\n"), "utf8");
+    index?.rebuild(upstreamSessionList());
+    return { ok: true as const };
+  });
+
+  ipcMain.handle("hcode/session/delete", (_e, id: unknown) => {
+    if (typeof id !== "string" || id.length === 0) throw new Error("需要会话 id");
+    if (bridge?.status().sessionId === id) {
+      throw new Error("该会话正在使用中，请先切换到其他会话再删除");
+    }
+    // 防路径逃逸：id 只允许 uuid 安全字符（先于任何文件操作）
+    if (!/^[0-9a-zA-Z-]+$/.test(id)) throw new Error("非法会话 id");
+    const file = path.join(sessionsDir(), `${id}.jsonl`);
+    if (!fs.existsSync(file)) throw new Error(`找不到会话：${id}`);
+    fs.unlinkSync(file);
+    index?.rebuild(upstreamSessionList());
+    return { ok: true as const };
+  });
+
   ipcMain.handle("hcode/session/list", () => {
     // ADR-0002：上游 list() 是唯一真相源；每次列表都经「rebuild→查询」保证与 JSONL 一致。
+    // 注意：此处的 rebuild 不带 loadTexts（会清空 messages 文本表）——全文搜索在
+    // hcode/session/search 里按需重建文本索引，避免列表查询全量重读所有 JSONL。
     const truth = upstreamSessionList();
     index?.rebuild(truth);
     return {
@@ -141,6 +189,12 @@ function registerIpc(): void {
     }
     requireBridge().respondPermission(id, outcome);
   });
+
+  ipcMain.handle("hcode/mcp/list", () => (bridge ? bridge.listMcp() : []));
+
+  ipcMain.handle("hcode/agents/list", () =>
+    bridge ? bridge.subagentReports() : { running: 0, max: 3, workers: [] },
+  );
 
   ipcMain.handle("hcode/model/list", () => (bridge ? bridge.listModels() : []));
 

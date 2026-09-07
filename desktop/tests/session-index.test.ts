@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { SessionIndex } from "../src/main/session-index";
+import { SessionManager } from "../../src/session/manager.js";
 import type { SessionSummary } from "../../src/session/types";
 
 let home: string;
@@ -70,4 +71,57 @@ describe("SessionIndex（SQLite 索引层）", () => {
     );
     index.close();
   });
+});
+
+describe("SessionIndex.search（P2 会话全文搜索）", () => {
+  it("rebuild 含文本 → LIKE 命中用户/助手文本、转义与无结果", () => {
+    const index = new SessionIndex(dbPath);
+    index.rebuild([summary("a", { title: "修复除零" }), summary("b")], (id) =>
+      id === "a" ? ["修复 utils.py 的除零 bug", "已把 a - b 改成 a + b 并跑通测试"] : ["无关会话内容"],
+    );
+
+    expect(index.search("除零").map((h) => h.sessionId)).toEqual(["a"]);
+    const hit = index.search("除零")[0]!;
+    expect(hit.title).toBe("修复除零");
+    expect(hit.snippet).toContain("除零");
+
+    // 特殊字符转义：100% 作为字面量查询不炸且不误命中
+    expect(index.search("100%")).toEqual([]);
+    // 无结果
+    expect(index.search("不存在的关键词xyz")).toEqual([]);
+    index.close();
+  });
+
+  it("rebuild 未提供 loadTexts 时 messages 表为空、search 返回空", () => {
+    const index = new SessionIndex(dbPath);
+    index.rebuild([summary("a")]);
+    expect(index.search("任意")).toEqual([]);
+    index.close();
+  });
+});
+
+it("撕裂行 JSONL 不污染索引（P2-T1 直测：经上游 load 的容忍）", () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "hcode-torn-"));
+  const mgr = new SessionManager(path.join(home, "sessions"));
+  const id = mgr.start(home, "mock");
+  const good = JSON.stringify({ type: "message", message: { role: "user", content: "搜索关键词甲" } });
+  const torn = '{"type":"message","message":{"role":"user","content":"被截断的半';
+  fs.appendFileSync(path.join(home, "sessions", `${id}.jsonl`), good + "\n" + torn);
+
+  const index = new SessionIndex(dbPath);
+  const sessions = mgr.list();
+  const texts = new Map<string, string[]>();
+  for (const s of sessions) {
+    texts.set(
+      s.id,
+      (mgr.load(s.id)?.messages ?? [])
+        .filter((m: { role?: string }) => m.role === "user" || m.role === "assistant")
+        .map((m) => JSON.stringify((m as { content?: unknown }).content ?? "")),
+    );
+  }
+  index.rebuild(sessions, (sid) => texts.get(sid) ?? []);
+  expect(index.count()).toBe(1);
+  expect(index.search("搜索关键词甲").length).toBe(1);
+  expect(index.search("被截断的半")).toEqual([]);
+  index.close();
 });

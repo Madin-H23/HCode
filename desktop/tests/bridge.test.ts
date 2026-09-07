@@ -204,6 +204,15 @@ describe("HarnessBridge（主进程桥）", () => {
     expect(fs.existsSync(path.join(workdir, "abort.txt"))).toBe(false);
   }, 30000);
 
+  it("listMcp：未装配 MCP 时返回空数组（不抛错）", async () => {
+    const bridge = await createHarnessBridge(
+      { projectRoot: workdir, mock: true },
+      { onEvent: () => {}, onStatus: () => {} },
+    );
+    cleanups.push(bridge.harness.shutdown());
+    expect(await bridge.listMcp()).toEqual([]);
+  }, 30000);
+
   it("attach：新桥恢复历史转录（桌面端会话面依赖）", async () => {
     const first = await createHarnessBridge(
       { projectRoot: workdir, mock: true, session: { mode: "new" } },

@@ -36,6 +36,23 @@ export interface ModelInfo {
   contextWindow?: number;
 }
 
+export interface McpServerInfo {
+  name: string;
+  status: string;
+  toolCount: number;
+  error?: string;
+  tools: string[];
+}
+
+export interface SubAgentSummary {
+  id: string;
+  name: string;
+  task: string;
+  status: string;
+  durationMs?: number;
+  report?: string;
+}
+
 export interface BridgeSink {
   onEvent(envelope: EventEnvelope): void;
   onStatus(status: BridgeStatus): void;
@@ -53,6 +70,10 @@ export interface HarnessBridge {
   listModels(): Promise<ModelInfo[]>;
   /** 热切换模型（上游语义：仅赋值，下一轮生效，不清会话）。无效模型抛错。 */
   setModel(provider: string, id: string): Promise<void>;
+  /** MCP 服务器状态快照（未装配 MCP 时为空数组）。 */
+  listMcp(): Array<McpServerInfo>;
+  /** 子代理监督快照（运行数/上限/worker 报告）。 */
+  subagentReports(): { running: number; max: number; workers: SubAgentSummary[] };
   /** 应答一条权限 ASK；id 无效时抛错。 */
   respondPermission(id: number, outcome: PromptOutcome): void;
   /** 当前是否 mock 模型装配（调试脚本注入口的判据）。 */
@@ -202,6 +223,32 @@ export async function createHarnessBridge(
       const resolved = await harness.models.resolve({ provider, model: id });
       harness.runtime.setModel(resolved);
       emitStatus();
+    },
+
+    listMcp(): McpServerInfo[] {
+      const mcp = harness.mcp;
+      if (!mcp) return [];
+      return mcp.statuses().map((s) => ({
+        name: s.name,
+        status: s.status,
+        toolCount: s.toolCount,
+        error: s.error,
+        tools: s.status === "connected" ? mcp.toolsOf(s.name).map((t) => t.name) : [],
+      }));
+    },
+
+    subagentReports(): { running: number; max: number; workers: SubAgentSummary[] } {
+      const sub = harness.subAgents;
+      if (!sub) return { running: 0, max: 3, workers: [] };
+      const workers = sub.reports().map((w) => ({
+        id: w.id,
+        name: w.name,
+        task: w.task,
+        status: w.status,
+        durationMs: w.durationMs,
+        report: w.report ? String(w.report).slice(0, 300) : undefined,
+      }));
+      return { running: sub.runningCount, max: 3, workers };
     },
 
     armMockScript(text: string): void {

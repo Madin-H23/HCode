@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react"
-import type { AgentEventEnvelope, BridgeStatus, ModelInfo, PermissionRequestPayload, PromptOutcome, SessionSummary } from "./hcode.d"
+import type { AgentEventEnvelope, BridgeStatus, ModelInfo, PermissionRequestPayload, PromptOutcome, McpServerInfo, SearchHit, SubAgentSummary, SessionSummary } from "./hcode.d"
 import { initialChatState, reduceChatEvent, type ChatItem, type ChatState } from "./chat"
 
 const styles = {
@@ -153,12 +153,60 @@ const styles = {
   dialogReason: { margin: 0, fontSize: 12, color: "#d29922" },
   dialogRow: { display: "flex", gap: 8, justifyContent: "flex-end" },
   permHint: { fontSize: 11, color: "#6d6d78", margin: 0 },
+  searchPanel: {
+    padding: "8px 16px",
+    display: "flex",
+    flexDirection: "column" as const,
+    gap: 6,
+    borderBottom: "1px solid #2c2c34",
+    maxHeight: 200,
+    overflowY: "auto" as const,
+  },
+  searchHit: {
+    display: "flex",
+    gap: 10,
+    alignItems: "baseline",
+    background: "transparent",
+    border: "1px solid #33333d",
+    borderRadius: 6,
+    padding: "6px 10px",
+    color: "#b9b9c3",
+    cursor: "pointer",
+    fontSize: 12,
+    textAlign: "left" as const,
+  },
 }
 
 type CardState = "running" | "ok" | "error" | "stopped"
 
 const stateStyle = (state: CardState): (typeof styles)["ok" | "error" | "running" | "stopped"] =>
   state === "ok" ? styles.ok : state === "error" ? styles.error : state === "stopped" ? styles.stopped : styles.running
+
+/** 权限理由查表翻译（对照 src/permissions/rules.ts 英文清单；渲染层只读映射，不改上游数据）。 */
+const reasonZh = (reason: string): string => {
+  const table: Array<[RegExp, string]> = [
+    [/read-only operation/i, "只读操作（工作区内）"],
+    [/accesses? .*outside/i, "访问工作区外路径"],
+    [/write outside/i, "写入工作区外路径"],
+    [/write modifies project files/i, "写入将修改工作区文件"],
+    [/modifies project files/i, "将修改工作区文件"],
+    [/catastrophic command refused/i, "危险命令已被策略拒绝"],
+    [/delete/i, "包含删除操作"],
+    [/spawn/i, "派生子代理"],
+  ]
+  for (const [re, zh] of table) {
+    if (re.test(reason)) return zh
+  }
+  return reason
+}
+
+/** 工具 detail 已知英文模式改写（read 头/bash 截断标记等；展示层只读替换）。 */
+const localizeDetail = (detail: string): string =>
+  detail
+    .replace(/(\d+) lines, showing (\d+)-(\d+)/, "共 $1 行，显示 $2-$3")
+    .replace(/\[output truncated: (\d+) characters omitted\]/, "[输出已截断：省略 $1 字符]")
+    .replace(/✗ exit (\d+)/, "✗ 退出码 $1")
+    .replace(/✓ exit (\d+)/, "✓ 退出码 $1")
 
 const stateLabel = (state: CardState, durationMs?: number): string => {
   const suffix = durationMs != null ? ` · ${(durationMs / 1000).toFixed(1)}s` : ""
@@ -184,7 +232,16 @@ export default function App() {
   const [permissions, setPermissions] = useState<PermissionRequestPayload[]>([])
   const [sessions, setSessions] = useState<SessionSummary[]>([])
   const [expandedDiffs, setExpandedDiffs] = useState<Set<number>>(new Set())
+  const [govTarget, setGovTarget] = useState<string | null>(null)
+  const [govMode, setGovMode] = useState<"rename" | "delete" | null>(null)
+  const [govTitle, setGovTitle] = useState("")
   const [models, setModels] = useState<ModelInfo[]>([])
+  const [mcpServers, setMcpServers] = useState<McpServerInfo[]>([])
+  const [mcpOpen, setMcpOpen] = useState(false)
+  const [agents, setAgents] = useState<{ running: number; max: number; workers: SubAgentSummary[] } | null>(null)
+  const [agentsOpen, setAgentsOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState("")
+  const [searchResults, setSearchResults] = useState<SearchHit[] | null>(null)
   const chatRef = useRef<ChatState>(initialChatState)
   const messagesRef = useRef<HTMLDivElement>(null)
 
@@ -192,6 +249,28 @@ export default function App() {
     const offEvent = window.hcode.onAgentEvent((payload: AgentEventEnvelope) => {
       chatRef.current = reduceChatEvent(chatRef.current, payload.event)
       setItems(chatRef.current.items)
+      // spawn_agent 结束事件携带 WorkerReport（details）——确定性捕获，轮询可能错过短生命周期
+      const ev = payload.event as {
+        type?: string
+        toolName?: string
+        result?: { details?: Record<string, unknown> }
+      }
+      if (ev.type === "tool_execution_end" && ev.toolName === "spawn_agent" && ev.result?.details) {
+        const d = ev.result.details
+        if (typeof d.id === "string") {
+          setAgents((prev) => {
+            const base = prev ?? { running: 1, max: 3, workers: [] }
+            const worker = {
+              id: String(d.id),
+              name: String(d.name ?? d.id),
+              task: String(d.task ?? ""),
+              status: typeof d.status === "string" ? d.status : "running",
+              durationMs: typeof d.durationMs === "number" ? d.durationMs : undefined,
+            }
+            return { ...base, workers: [...base.workers.filter((w) => w.id !== worker.id), worker] }
+          })
+        }
+      }
     })
     const offStatus = window.hcode.onStatus((s) => {
       setStatus(s)
@@ -204,6 +283,8 @@ export default function App() {
       setItems([])
       setPermissions([])
       setExpandedDiffs(new Set())
+      setMcpServers([])
+      setMcpOpen(false)
     })
     const offPermission = window.hcode.onPermission((request) =>
       setPermissions((prev) => [...prev, request]),
@@ -224,6 +305,80 @@ export default function App() {
     void window.hcode
       .listSessions()
       .then((r) => setSessions(r.sessions))
+      .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)))
+  }
+
+  useEffect(() => {
+    if (!workspace) return
+    const t = setInterval(() => {
+      void window.hcode
+        .listAgents()
+        .then((next) =>
+          // 上游 reports() 只含运行中 worker；按 id 合并保留历史派驻记录
+          setAgents((prev) => {
+            const map = new Map((prev?.workers ?? []).map((w) => [w.id, w]))
+            for (const w of next.workers) map.set(w.id, w)
+            return { running: next.running, max: next.max, workers: [...map.values()] }
+          }),
+        )
+        .catch(() => {})
+    }, 3000)
+    return () => clearInterval(t)
+  }, [workspace])
+
+  const toggleAgents = (): void => {
+    setAgentsOpen((v) => !v)
+    loadAgents()
+  }
+
+  const toggleMcp = (): void => {
+    setError(null)
+    if (!mcpOpen) {
+      void window.hcode
+        .listMcp()
+        .then(setMcpServers)
+        .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)))
+    }
+    setMcpOpen((v) => !v)
+  }
+
+  const loadAgents = (): void => {
+    void window.hcode
+      .listAgents()
+      .then(setAgents)
+      .catch(() => {})
+  }
+
+  const openGov = (mode: "rename" | "delete"): void => {
+    const id = status?.sessionId
+    if (!id) {
+      setError("当前无活跃会话")
+      return
+    }
+    setGovTarget(id)
+    setGovMode(mode)
+    setGovTitle(sessions.find((s) => s.id === id)?.title ?? "")
+    setError(null)
+  }
+
+  const submitGov = (): void => {
+    if (!govTarget || !govMode) return
+    setError(null)
+    const call =
+      govMode === "rename"
+        ? window.hcode.renameSession(govTarget, govTitle.trim())
+        : window.hcode.deleteSession(govTarget)
+    void call
+      .then(() => {
+        setGovTarget(null)
+        setGovMode(null)
+        if (govMode === "delete") {
+          // 删除的是当前活跃会话之外才有意义（活跃受保护）；其他路径刷新列表
+          loadSessions()
+        } else {
+          loadSessions()
+        }
+      })
       .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)))
   }
 
@@ -263,7 +418,8 @@ export default function App() {
   useEffect(() => {
     if (permissions.length === 0) return
     const onKey = (e: KeyboardEvent): void => {
-      if (e.key === "Escape") {
+      // IME 组合中的 Escape 是取消候选词（keyCode 229 兼容），不当作拒绝
+      if (e.key === "Escape" && !e.isComposing && e.keyCode !== 229) {
         const first = permissions[0]
         if (first) respond(first, "deny")
       }
@@ -308,15 +464,35 @@ export default function App() {
 
   const newSession = (): void => {
     setError(null)
+    setSearchResults(null)
+    setSearchQuery("")
     void window.hcode
       .newSession()
       .then(() => loadSessions())
       .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)))
   }
 
+  const runSearch = (): void => {
+    const q = searchQuery.trim()
+    if (!q) return
+    setError(null)
+    void window.hcode
+      .searchSessions(q)
+      .then((r) => setSearchResults(r.results))
+      .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)))
+  }
+
+  const openSearchHit = (hit: SearchHit): void => {
+    setSearchResults(null)
+    setSearchQuery("")
+    attachSession(hit.sessionId)
+  }
+
   const attachSession = (id: string): void => {
     if (!id) return
     setError(null)
+    setSearchResults(null)
+    setSearchQuery("")
     void window.hcode
       .attachSession(id)
       .then((r) => {
@@ -348,7 +524,7 @@ export default function App() {
           {status
             ? `${busy ? "busy" : "idle"} · ${status.model} · 权限 ${status.permissionMode} · ${
                 status.sessionId ? `会话 ${status.sessionId.slice(0, 8)}` : "无会话"
-              } · ctx ~${Math.round(status.tokens / 1000)}k${
+              } · ${agents && agents.workers.length > 0 ? `子代理 ${agents.running}/${agents.max} · ` : ""}ctx ~${Math.round(status.tokens / 1000)}k${
                 status.contextWindow ? `/${Math.round(status.contextWindow / 1000)}k` : ""
               }`
             : "未装配"}
@@ -395,8 +571,43 @@ export default function App() {
             </option>
           ))}
         </select>
+        <button
+          style={styles.button}
+          data-testid="rename-session"
+          disabled={!status?.sessionId || busy}
+          onClick={() => openGov("rename")}
+        >
+          重命名
+        </button>
+        <button
+          style={styles.button}
+          data-testid="delete-session"
+          disabled={!status?.sessionId || busy}
+          onClick={() => openGov("delete")}
+        >
+          删除
+        </button>
         <button style={styles.button} data-testid="sessions-refresh" disabled={busy} onClick={loadSessions}>
           刷新
+        </button>
+        <button style={styles.button} data-testid="mcp-toggle" onClick={toggleMcp}>
+          MCP
+        </button>
+        <button style={styles.button} data-testid="agents-toggle" onClick={toggleAgents}>
+          子代理{agents && agents.running > 0 ? ` ${agents.running}/${agents.max}` : ""}
+        </button>
+        <input
+          style={{ ...styles.button, width: 160 }}
+          data-testid="search-input"
+          placeholder="搜索会话内容…"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.nativeEvent.isComposing) runSearch()
+          }}
+        />
+        <button style={styles.button} data-testid="search-run" disabled={!searchQuery.trim()} onClick={runSearch}>
+          搜索
         </button>
         {recents.slice(0, 5).map((ws) => {
           const base = ws.split(/[\\/]/).filter(Boolean).pop() ?? ws
@@ -414,6 +625,59 @@ export default function App() {
           )
         })}
       </div>
+
+      {agentsOpen && (
+        <div style={styles.searchPanel} data-testid="agents-panel">
+          {(!agents || agents.workers.length === 0) && <p style={styles.placeholder}>无子代理</p>}
+          {agents?.workers.map((w) => (
+            <div key={w.id} style={styles.searchHit} data-testid="agent-row">
+              <span style={styles.toolName}>{w.name}</span>
+              <span style={{ color: w.status === "running" ? "#d2a8ff" : w.status === "completed" ? "#7ee787" : "#ff7b72" }}>
+                {w.status}
+              </span>
+              <span style={{ color: "#6d6d78" }}>{w.task}</span>
+              {w.durationMs != null && <span style={{ color: "#6d6d78" }}>{(w.durationMs / 1000).toFixed(1)}s</span>}
+              {w.report && <span style={{ color: "#8b8b96" }}>{w.report.slice(0, 120)}</span>}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {mcpOpen && (
+        <div style={styles.searchPanel} data-testid="mcp-panel">
+          {mcpServers.length === 0 && <p style={styles.placeholder}>未配置 MCP 服务器</p>}
+          {mcpServers.map((server) => (
+            <div key={server.name} style={styles.searchHit} data-testid="mcp-server">
+              <span style={styles.toolName}>{server.name}</span>
+              <span style={{ color: server.status === "connected" ? "#7ee787" : "#ff7b72" }}>
+                {server.status}
+              </span>
+              <span style={{ color: "#6d6d78" }}>{server.toolCount} 个工具</span>
+              {server.error && <span style={styles.errorLine}>{server.error}</span>}
+              {server.tools.length > 0 && (
+                <span style={{ color: "#6d6d78" }}>工具: {server.tools.join(", ")}</span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {searchResults !== null && (
+        <div style={styles.searchPanel} data-testid="search-results">
+          {searchResults.length === 0 && <p style={styles.placeholder}>无匹配会话</p>}
+          {searchResults.map((hit) => (
+            <button
+              key={`${hit.sessionId}-${hit.snippet}-${searchResults.indexOf(hit)}`}
+              style={styles.searchHit}
+              data-testid="search-hit"
+              onClick={() => openSearchHit(hit)}
+            >
+              <span style={styles.toolName}>{hit.title ?? "（无标题会话）"}</span>
+              <span style={{ color: "#6d6d78" }}>{hit.snippet}</span>
+            </button>
+          ))}
+        </div>
+      )}
 
       <div style={styles.messages} data-testid="messages" ref={messagesRef}>
         {items.length === 0 && (
@@ -450,7 +714,7 @@ export default function App() {
                   </button>
                 )}
               </div>
-              {item.detail && <div style={styles.toolDetail}>{item.detail}</div>}
+              {item.detail && <div style={styles.toolDetail}>{localizeDetail(item.detail)}</div>}
               {item.diff && expandedDiffs.has(item.id) && (
                 <pre style={styles.diffView} data-testid="diff-view">
                   {item.diff.split("\n").map((line, i) => (
@@ -480,6 +744,44 @@ export default function App() {
         </p>
       )}
 
+      {govTarget && govMode && (
+        <div style={styles.overlay} data-testid="gov-dialog">
+          <div style={styles.dialog}>
+            <p style={styles.dialogTitle}>{govMode === "rename" ? "重命名会话" : "删除会话"}</p>
+            {govMode === "rename" && (
+              <input
+                style={{ ...styles.textarea, height: 36 }}
+                data-testid="gov-input"
+                value={govTitle}
+                onChange={(e) => setGovTitle(e.target.value)}
+              />
+            )}
+            {govMode === "delete" && (
+              <p style={styles.dialogReason}>将删除该会话的 JSONL 文件，不可恢复。确认删除？</p>
+            )}
+            <div style={styles.dialogRow}>
+              <button
+                style={styles.button}
+                data-testid="gov-cancel"
+                onClick={() => {
+                  setGovTarget(null)
+                  setGovMode(null)
+                }}
+              >
+                取消
+              </button>
+              <button
+                style={styles.button}
+                data-testid={govMode === "rename" ? "gov-confirm" : "gov-confirm"}
+                onClick={submitGov}
+              >
+                {govMode === "rename" ? "重命名" : "确认删除"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {permissions.length > 0 && (
         <div style={styles.overlay} data-testid="perm-dialog">
           <div style={styles.dialog}>
@@ -490,7 +792,7 @@ export default function App() {
             <p style={styles.dialogTool}>{permissions[0]!.toolName}</p>
             <p style={styles.dialogTool}>{permissions[0]!.title}</p>
             {permissions[0]!.detail && <pre style={styles.dialogBody}>{permissions[0]!.detail}</pre>}
-            <p style={styles.dialogReason}>{permissions[0]!.reason}</p>
+            <p style={styles.dialogReason}>{reasonZh(permissions[0]!.reason)}</p>
             <div style={styles.dialogRow}>
               <button
                 style={styles.button}
