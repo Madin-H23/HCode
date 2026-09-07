@@ -13,6 +13,7 @@
 ## 桌面端已知取舍（P2 批次后余项）
 
 - tool_execution_update 进度流**降级不立项**：探查实证自有工具集全部不发 update（仅 pi-agent-core harness 版 bash 发，本仓库 bootstrap 用自有工具集）；渲染通路已预留（bridge 全量转发），待上游 bash 转发 update 或自研工具需要时一并实现
+- 子代理 E2E（P2-③）因 mock 队列 worker/主回合并发饥饿隔离（issue #26），本地 HCODE_E2E_SUBAGENT=1 可手动运行；面板功能已人工+截图验证
 - 权限排队指示仅显示同时挂起数（「排队 N 项」）：顺序 toolCall 的权限逐个挂起，批次总数不可预知（P1-T5 实证修正）
 - 子代理面板/状态行基于「最后非空快照」：上游 reports() 只含运行中 worker，完成即从管理器消失；桌面端按 id 合并保留派驻记录（P2-T3 事件驱动捕获）
 - 模型热切换的差值断言在 mock 单模型装配下无差值（真实多模型切换需真凭据场景验证）

@@ -308,9 +308,10 @@ export default function App() {
       .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)))
   }
 
+  // 轮询仅在面板打开时运行（避免后台重渲染与 Playwright 可动性检查活锁）
   useEffect(() => {
-    if (!workspace) return
-    const t = setInterval(() => {
+    if (!workspace || !agentsOpen) return
+    const fetchAgents = (): void => {
       void window.hcode
         .listAgents()
         .then((next) =>
@@ -322,9 +323,11 @@ export default function App() {
           }),
         )
         .catch(() => {})
-    }, 3000)
+    }
+    fetchAgents()
+    const t = setInterval(fetchAgents, 2000)
     return () => clearInterval(t)
-  }, [workspace])
+  }, [workspace, agentsOpen])
 
   const toggleAgents = (): void => {
     setAgentsOpen((v) => !v)
@@ -594,7 +597,7 @@ export default function App() {
           MCP
         </button>
         <button style={styles.button} data-testid="agents-toggle" onClick={toggleAgents}>
-          子代理{agents && agents.running > 0 ? ` ${agents.running}/${agents.max}` : ""}
+          子代理
         </button>
         <input
           style={{ ...styles.button, width: 160 }}
