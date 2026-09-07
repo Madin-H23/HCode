@@ -158,6 +158,8 @@ function registerIpc(): void {
     requireBridge().respondPermission(id, outcome);
   });
 
+  ipcMain.handle("hcode/mcp/list", () => (bridge ? bridge.listMcp() : []));
+
   ipcMain.handle("hcode/model/list", () => (bridge ? bridge.listModels() : []));
 
   ipcMain.handle("hcode/model/set", async (_e, payload: unknown) => {

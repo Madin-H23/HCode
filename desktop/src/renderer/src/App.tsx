@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react"
-import type { AgentEventEnvelope, BridgeStatus, ModelInfo, PermissionRequestPayload, PromptOutcome, SearchHit, SessionSummary } from "./hcode.d"
+import type { AgentEventEnvelope, BridgeStatus, ModelInfo, PermissionRequestPayload, PromptOutcome, McpServerInfo, SearchHit, SessionSummary } from "./hcode.d"
 import { initialChatState, reduceChatEvent, type ChatItem, type ChatState } from "./chat"
 
 const styles = {
@@ -207,6 +207,8 @@ export default function App() {
   const [sessions, setSessions] = useState<SessionSummary[]>([])
   const [expandedDiffs, setExpandedDiffs] = useState<Set<number>>(new Set())
   const [models, setModels] = useState<ModelInfo[]>([])
+  const [mcpServers, setMcpServers] = useState<McpServerInfo[]>([])
+  const [mcpOpen, setMcpOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
   const [searchResults, setSearchResults] = useState<SearchHit[] | null>(null)
   const chatRef = useRef<ChatState>(initialChatState)
@@ -249,6 +251,16 @@ export default function App() {
       .listSessions()
       .then((r) => setSessions(r.sessions))
       .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)))
+  }
+
+  const toggleMcp = (): void => {
+    if (!mcpOpen) {
+      void window.hcode
+        .listMcp()
+        .then(setMcpServers)
+        .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)))
+    }
+    setMcpOpen((v) => !v)
   }
 
   const loadModels = (): void => {
@@ -442,6 +454,9 @@ export default function App() {
         <button style={styles.button} data-testid="sessions-refresh" disabled={busy} onClick={loadSessions}>
           刷新
         </button>
+        <button style={styles.button} data-testid="mcp-toggle" onClick={toggleMcp}>
+          MCP
+        </button>
         <input
           style={{ ...styles.button, width: 160 }}
           data-testid="search-input"
@@ -471,6 +486,25 @@ export default function App() {
           )
         })}
       </div>
+
+      {mcpOpen && (
+        <div style={styles.searchPanel} data-testid="mcp-panel">
+          {mcpServers.length === 0 && <p style={styles.placeholder}>未配置 MCP 服务器</p>}
+          {mcpServers.map((server) => (
+            <div key={server.name} style={styles.searchHit} data-testid="mcp-server">
+              <span style={styles.toolName}>{server.name}</span>
+              <span style={{ color: server.status === "connected" ? "#7ee787" : "#ff7b72" }}>
+                {server.status}
+              </span>
+              <span style={{ color: "#6d6d78" }}>{server.toolCount} 个工具</span>
+              {server.error && <span style={styles.errorLine}>{server.error}</span>}
+              {server.tools.length > 0 && (
+                <span style={{ color: "#6d6d78" }}>工具: {server.tools.join(", ")}</span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
 
       {searchResults !== null && (
         <div style={styles.searchPanel} data-testid="search-results">

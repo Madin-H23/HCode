@@ -1,9 +1,9 @@
 export type { BridgeStatus, WorkspacePickResult } from "../../main/bridge";
 export type { EventEnvelope as AgentEventEnvelope } from "../../main/bridge";
-export type { PermissionRequestPayload, ModelInfo } from "../../main/bridge";
+export type { PermissionRequestPayload, ModelInfo, McpServerInfo } from "../../main/bridge";
 export type { PromptOutcome } from "../../../src/permissions/manager";
 export type { SessionSummary } from "../../../src/session/types";
-import type { BridgeStatus, EventEnvelope, PermissionRequestPayload, ModelInfo } from "../../main/bridge";
+import type { BridgeStatus, EventEnvelope, PermissionRequestPayload, ModelInfo, McpServerInfo } from "../../main/bridge";
 import type { PromptOutcome } from "../../../src/permissions/manager";
 import type { SessionSummary } from "../../../src/session/types";
 
@@ -29,6 +29,7 @@ export interface HcodeApi {
   respondPermission(id: number, outcome: PromptOutcome): Promise<void>;
   listModels(): Promise<ModelInfo[]>;
   setModel(provider: string, id: string): Promise<{ ok: boolean }>;
+  listMcp(): Promise<McpServerInfo[]>;
   onAgentEvent(cb: (payload: EventEnvelope) => void): () => void;
   onStatus(cb: (payload: BridgeStatus) => void): () => void;
   onWorkspace(cb: (payload: { projectRoot: string }) => void): () => void;

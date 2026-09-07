@@ -36,6 +36,14 @@ export interface ModelInfo {
   contextWindow?: number;
 }
 
+export interface McpServerInfo {
+  name: string;
+  status: string;
+  toolCount: number;
+  error?: string;
+  tools: string[];
+}
+
 export interface BridgeSink {
   onEvent(envelope: EventEnvelope): void;
   onStatus(status: BridgeStatus): void;
@@ -53,6 +61,8 @@ export interface HarnessBridge {
   listModels(): Promise<ModelInfo[]>;
   /** 热切换模型（上游语义：仅赋值，下一轮生效，不清会话）。无效模型抛错。 */
   setModel(provider: string, id: string): Promise<void>;
+  /** MCP 服务器状态快照（未装配 MCP 时为空数组）。 */
+  listMcp(): Array<McpServerInfo>;
   /** 应答一条权限 ASK；id 无效时抛错。 */
   respondPermission(id: number, outcome: PromptOutcome): void;
   /** 当前是否 mock 模型装配（调试脚本注入口的判据）。 */
@@ -202,6 +212,18 @@ export async function createHarnessBridge(
       const resolved = await harness.models.resolve({ provider, model: id });
       harness.runtime.setModel(resolved);
       emitStatus();
+    },
+
+    listMcp(): McpServerInfo[] {
+      const mcp = harness.mcp;
+      if (!mcp) return [];
+      return mcp.statuses().map((s) => ({
+        name: s.name,
+        status: s.status,
+        toolCount: s.toolCount,
+        error: s.error,
+        tools: s.status === "connected" ? mcp.toolsOf(s.name).map((t) => t.name) : [],
+      }));
     },
 
     armMockScript(text: string): void {

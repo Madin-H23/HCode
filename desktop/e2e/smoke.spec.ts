@@ -6,6 +6,7 @@ import path from 'node:path'
 
 interface LaunchOptions {
   script?: 'tool' | 'permission' | 'permission-multi' | 'edit'
+  mcp?: boolean
 }
 
 /** 统一的 E2E 装配：mock 模型 + 隔离 TINYCODE_HOME/userData + 可选工具脚本注入口。 */
@@ -14,6 +15,18 @@ async function launchApp(
 ): Promise<{ app: ElectronApplication; win: Page; workdir: string; home: string }> {
   const workdir = fs.mkdtempSync(path.join(os.tmpdir(), 'hcode-e2e-ws-'))
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'hcode-e2e-home-'))
+  if (opts.mcp) {
+    // 工作区 config 装配 fixtures 的 mock MCP server（stdio，echo/fail 两工具）
+    fs.mkdirSync(path.join(workdir, '.tinycode'), { recursive: true })
+    fs.writeFileSync(
+      path.join(workdir, '.tinycode', 'config.json'),
+      JSON.stringify({
+        mcpServers: {
+          'test-mcp': { command: process.execPath, args: [path.resolve('..', 'fixtures', 'mock-mcp', 'server.mjs')] }
+        }
+      })
+    )
+  }
   const app: ElectronApplication = await _electron.launch({
     args: ['out/main/index.js'],
     env: {
@@ -261,6 +274,22 @@ test('E2E P2-①：会话全文搜索 → 点击恢复', async () => {
 
     await hit.click()
     await expect(win.getByTestId('messages')).toContainText(marker, { timeout: 15000 })
+  } finally {
+    await app.close()
+  }
+})
+
+test('E2E P2-②：MCP 面板显示 server 状态与工具数', async () => {
+  const { app, win } = await launchApp({ mcp: true })
+  try {
+    await win.getByTestId('mcp-toggle').click()
+    const panel = win.getByTestId('mcp-panel')
+    await expect(panel).toBeVisible({ timeout: 20000 })
+    const server = win.getByTestId('mcp-server')
+    await expect(server).toContainText('test-mcp', { timeout: 15000 })
+    await expect(server).toContainText('connected')
+    await expect(server).toContainText('2 个工具')
+    await expect(server).toContainText('echo, fail')
   } finally {
     await app.close()
   }

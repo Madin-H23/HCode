@@ -116,7 +116,7 @@ it("撕裂行 JSONL 不污染索引（P2-T1 直测：经上游 load 的容忍）
       s.id,
       (mgr.load(s.id)?.messages ?? [])
         .filter((m: { role?: string }) => m.role === "user" || m.role === "assistant")
-        .map((m: { content?: unknown }) => JSON.stringify(m.content ?? "")),
+        .map((m) => JSON.stringify((m as { content?: unknown }).content ?? "")),
     );
   }
   index.rebuild(sessions, (sid) => texts.get(sid) ?? []);
