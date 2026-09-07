@@ -363,7 +363,10 @@ export default function App() {
               </span>
             </>
           ) : (
-            <span className="dot" /> // 炉心待燃
+            <>
+              <span className="dot idle-empty" />
+              <span>未装配</span>
+            </>
           )}
         </p>
       </header>

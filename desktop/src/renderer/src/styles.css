@@ -212,3 +212,8 @@ button { font-family: inherit; }
 .search-input { width: 170px; }
 .btn-stop { color: var(--err); position: relative; z-index: 50; }
 .btn-stop:hover:not(:disabled) { border-color: var(--err); background: rgba(255, 123, 114, 0.08); }
+
+/* ── 补丁：面板行 flex 间距 + 空态炉心点 ───────────────────── */
+.panel-static { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+.panel-static .ok { color: var(--ok); }
+.dot.idle-empty { background: var(--faint); }
