@@ -230,6 +230,8 @@ export default function App() {
       setItems([])
       setPermissions([])
       setExpandedDiffs(new Set())
+      setMcpServers([])
+      setMcpOpen(false)
     })
     const offPermission = window.hcode.onPermission((request) =>
       setPermissions((prev) => [...prev, request]),
@@ -254,6 +256,7 @@ export default function App() {
   }
 
   const toggleMcp = (): void => {
+    setError(null)
     if (!mcpOpen) {
       void window.hcode
         .listMcp()
