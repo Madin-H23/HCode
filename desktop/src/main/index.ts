@@ -147,10 +147,10 @@ function registerIpc(): void {
     if (bridge?.status().sessionId === id) {
       throw new Error("该会话正在使用中，请先切换到其他会话再删除");
     }
+    // 防路径逃逸：id 只允许 uuid 安全字符（先于任何文件操作）
+    if (!/^[0-9a-zA-Z-]+$/.test(id)) throw new Error("非法会话 id");
     const file = path.join(sessionsDir(), `${id}.jsonl`);
     if (!fs.existsSync(file)) throw new Error(`找不到会话：${id}`);
-    // 防路径逃逸：id 只允许 uuid 安全字符
-    if (!/^[0-9a-zA-Z-]+$/.test(id)) throw new Error("非法会话 id");
     fs.unlinkSync(file);
     index?.rebuild(upstreamSessionList());
     return { ok: true as const };
