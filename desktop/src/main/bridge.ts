@@ -3,6 +3,8 @@ import { fauxAssistantMessage, type AssistantMessage } from "@earendil-works/pi-
 import { buildHarnessFromCli } from "../../../src/cli/commands.js";
 import type { Harness } from "../../../src/bootstrap.js";
 import type { PromptOutcome, PermissionRequestView } from "../../../src/permissions/manager.js";
+import { SubAgentManager } from "../../../src/agents/manager.js";
+import { createSubAgentTools } from "../../../src/agents/tools.js";
 
 /**
  * 主进程桥——桌面端唯一 seam（SPEC #1 Testing Decisions）。
@@ -27,6 +29,8 @@ export interface BridgeStatus {
   tokens: number;
   /** 当前模型上下文窗口（模型未声明时缺省）。 */
   contextWindow?: number;
+  /** 子代理并发上限（当前生效值）。 */
+  subagentsMax: number;
 }
 
 export interface ModelInfo {
@@ -76,6 +80,10 @@ export interface HarnessBridge {
   subagentReports(): { running: number; max: number; workers: SubAgentSummary[] };
   /** 应答一条权限 ASK；id 无效时抛错。 */
   respondPermission(id: number, outcome: PromptOutcome): void;
+  /** 应用子代理并发上限（busy 时抛错；重建 SubAgentManager 并重绑 4 个监督工具）。 */
+  applySubagentMax(max: number): void;
+  /** 当前生效的子代理并发上限。 */
+  readonly subagentsMax: number;
   /** 当前是否 mock 模型装配（调试脚本注入口的判据）。 */
   readonly isMock: boolean;
   /** mock 模式下注入一条脚本回复；非 mock 模型时抛错（绝不静默失效）。 */
@@ -139,6 +147,7 @@ export async function createHarnessBridge(
     permissionMode: harness.permissions.mode,
     tokens: harness.contextManager.estimate(harness.runtime.agent.state.messages),
     contextWindow: (harness.model as { contextWindow?: number } | undefined)?.contextWindow,
+    subagentsMax,
   });
 
   const emitStatus = (): void => {
@@ -149,6 +158,30 @@ export async function createHarnessBridge(
   harness.runtime.agent.subscribe(async (event: AgentEvent) => {
     sink.onEvent({ seq: ++seq, event });
   });
+
+  let subagentsMax = 3;
+  const applySubagentMax = (max: number): void => {
+    const clamped = Math.min(5, Math.max(1, Math.floor(max) || 3));
+    const workerTools = ["read", "grep", "find", "ls"]
+      .map((n) => harness.tools.get(n))
+      .filter((t): t is NonNullable<typeof t> => t != null);
+    const mgr = new SubAgentManager({
+      projectRoot: harness.projectRoot,
+      model: harness.model,
+      streamFn: harness.models.streamFn,
+      workerTools,
+      maxConcurrent: clamped,
+    });
+    // pi-agent-core 每次 prompt 重新快照 state.tools——按名替换 4 个监督工具绑定新 manager
+    const subNames = new Set(["spawn_agent", "list_agents", "wait_agent", "close_agent"]);
+    harness.runtime.agent.state.tools = [
+      ...harness.runtime.agent.state.tools.filter((t) => !subNames.has(t.name)),
+      ...createSubAgentTools(mgr),
+    ];
+    harness.subAgents = mgr;
+    subagentsMax = clamped;
+  };
+  applySubagentMax(3);
 
   const armMock = (messages: AssistantMessage[]): void => {
     const handle = harness.models.mockHandle;
@@ -195,6 +228,14 @@ export async function createHarnessBridge(
       harness.runtime.abort();
     },
 
+    get subagentsMax(): number {
+      return subagentsMax;
+    },
+
+    applySubagentMax(max: number): void {
+      applySubagentMax(max);
+    },
+
     respondPermission(id: number, outcome: PromptOutcome): void {
       const resolve = pendingPermissions.get(id);
       if (!resolve) throw new Error(`无此权限请求：${id}`);
@@ -239,7 +280,7 @@ export async function createHarnessBridge(
 
     subagentReports(): { running: number; max: number; workers: SubAgentSummary[] } {
       const sub = harness.subAgents;
-      if (!sub) return { running: 0, max: 3, workers: [] };
+      if (!sub) return { running: 0, max: subagentsMax, workers: [] };
       const workers = sub.reports().map((w) => ({
         id: w.id,
         name: w.name,
@@ -248,7 +289,7 @@ export async function createHarnessBridge(
         durationMs: w.durationMs,
         report: w.report ? String(w.report).slice(0, 300) : undefined,
       }));
-      return { running: sub.runningCount, max: 3, workers };
+      return { running: sub.runningCount, max: subagentsMax, workers };
     },
 
     armMockScript(text: string): void {
