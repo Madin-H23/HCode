@@ -397,6 +397,20 @@ export default function App() {
             </option>
           ))}
         </select>
+        <select
+          className="select"
+          data-testid="session-select"
+          disabled={busy}
+          value=""
+          onChange={(e) => attachSession(e.target.value)}
+        >
+          <option value="">恢复会话…</option>
+          {sessions.map((s) => (
+            <option key={s.id} value={s.id}>
+              {`${s.title ?? "(无标题)"} · ${new Date(s.modifiedAt).toLocaleString()} · ${s.cwd}`}
+            </option>
+          ))}
+        </select>
         <button className="btn" data-testid="mcp-toggle" onClick={toggleMcp}>
           MCP
         </button>

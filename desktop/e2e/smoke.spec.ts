@@ -40,6 +40,10 @@ async function launchApp(
   })
   const win: Page = await app.firstWindow()
   await expect(win).toHaveTitle('HCode')
+  win.on('pageerror', (err) => console.log('[renderer-error]', err.message))
+  win.on('console', (msg) => {
+    if (msg.type() === 'error') console.log('[renderer-console-err]', msg.text())
+  })
   await win.getByTestId('open-workspace').click()
   await expect(win.getByTestId('workspace')).toContainText(workdir, { timeout: 15000 })
   return { app, win, workdir, home }
@@ -140,7 +144,6 @@ test('E2E 冒烟 ③：权限 ASK 对话框 round-trip（once / always / Esc=den
 // 隔离：会话治理路径偶发主线程冻结（IPC 挂起，调查见 issue #27）；
 // HCODE_E2E_SESSIONS=1 可手动运行。功能已人工验证。
 test('E2E 冒烟 ④：会话面——列表/新建/attach 恢复/继续追问', async () => {
-  test.skip(process.env.HCODE_E2E_SESSIONS !== '1', '主线程冻结调查中（#27）')
   test.setTimeout(90_000)
   const dbg = async (label: string): Promise<void> => {
     console.log('DBG-' + label, await win.getByTestId('status').textContent().catch(() => 'gone'))
@@ -163,6 +166,23 @@ test('E2E 冒烟 ④：会话面——列表/新建/attach 恢复/继续追问',
     await dbg('after-new')
     console.log('DBG-options', await win.getByTestId('session-select').locator('option').count())
     console.log('DBG-err', await win.getByTestId('error').textContent().catch(() => 'none'))
+    await win.evaluate(() => { (window as unknown as Record<string, unknown>).__probe = 'ALIVE' })
+    await win.waitForTimeout(5000)
+    console.log(
+      'DBG-probe',
+      await win
+        .evaluate(() => {
+          const sel = document.querySelector('[data-testid="session-select"]')
+          return {
+            probe: (window as unknown as Record<string, unknown>).__probe ?? 'MISSING',
+            selExists: !!sel,
+            options: sel ? sel.querySelectorAll('option').length : -1,
+            rootLen: document.getElementById('root')?.innerHTML.length ?? -1,
+            bodyHead: document.body.innerText.slice(0, 120),
+          }
+        })
+        .catch((e: Error) => 'eval-fail: ' + e.message),
+    )
 
     // attach：按标题选中带历史的会话（new-session 产生的空会话也在列表里）
     await win.getByTestId('session-select').selectOption(
@@ -331,7 +351,6 @@ test('E2E P2-③：子代理面板显示 worker 与运行数', async () => {
 // 隔离：会话治理路径偶发主线程冻结（IPC 挂起，调查见 issue #27）；
 // HCODE_E2E_SESSIONS=1 可手动运行。功能已人工验证。
 test('E2E P2-④：会话重命名与删除', async () => {
-  test.skip(process.env.HCODE_E2E_SESSIONS !== '1', '主线程冻结调查中（#27）')
   const { app, win } = await launchApp()
   try {
     // 产生两个会话：第一个活跃
