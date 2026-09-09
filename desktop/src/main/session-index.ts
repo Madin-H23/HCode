@@ -22,6 +22,8 @@ export interface SearchHit {
   title?: string;
   role: string;
   snippet: string;
+  /** 命中消息在会话 user/assistant 序列中的下标（0 起），attach 后可直接定位高亮。 */
+  msgIdx: number;
 }
 
 export class SessionIndex {
@@ -39,8 +41,11 @@ export class SessionIndex {
       message_count INTEGER NOT NULL
     )`);
     this.db.exec("CREATE INDEX IF NOT EXISTS idx_sessions_modified ON sessions (modified_at DESC)");
+    // schema 演进：加列属衍生层重建语义，直接弃旧表（ADR-0002：可随时 drop+rebuild）
+    this.db.exec("DROP TABLE IF EXISTS messages");
     this.db.exec(`CREATE TABLE IF NOT EXISTS messages (
       session_id TEXT NOT NULL,
+      msg_idx INTEGER NOT NULL,
       role TEXT NOT NULL,
       content TEXT NOT NULL
     )`);
@@ -53,7 +58,7 @@ export class SessionIndex {
    */
   rebuild(
     sessions: readonly SessionSummary[],
-    loadTexts?: (id: string) => string[],
+    loadTexts?: (id: string) => Array<{ idx: number; role: string; text: string }>,
   ): void {
     this.db.exec("BEGIN");
     try {
@@ -63,13 +68,13 @@ export class SessionIndex {
         "INSERT INTO sessions (id, cwd, model, title, created_at, modified_at, message_count) VALUES (?, ?, ?, ?, ?, ?, ?)",
       );
       const insertMessage = this.db.prepare(
-        "INSERT INTO messages (session_id, role, content) VALUES (?, ?, ?)",
+        "INSERT INTO messages (session_id, msg_idx, role, content) VALUES (?, ?, ?, ?)",
       );
       for (const s of sessions) {
         insertSession.run(s.id, s.cwd, s.model, s.title ?? null, s.createdAt, s.modifiedAt, s.messageCount);
         if (loadTexts) {
-          for (const text of loadTexts(s.id)) {
-            insertMessage.run(s.id, "text", text);
+          for (const m of loadTexts(s.id)) {
+            insertMessage.run(s.id, m.idx, m.role, m.text);
           }
         }
       }
@@ -94,12 +99,15 @@ export class SessionIndex {
       sessionId: string;
       title: string | null;
       modifiedAt: string;
+      msgIdx: number;
+      role: string;
       content: string;
     }>;
     return rows.map((row) => ({
       sessionId: row.sessionId,
       title: row.title ?? undefined,
-      role: "text",
+      role: row.role,
+      msgIdx: row.msgIdx,
       snippet: snippet(row.content, rawQuery),
     }));
   }

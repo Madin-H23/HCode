@@ -120,8 +120,8 @@ function registerIpc(): void {
       const loaded = new SessionManager(sessionsDir()).load(id);
       const messages = loaded ? loaded.messages : [];
       return messages
-        .filter((m) => m.role === "user" || m.role === "assistant")
-        .map((m) => textOf(m));
+        .map((m, idx) => ({ idx, role: String(m.role), text: textOf(m) }))
+        .filter((m) => m.role === "user" || m.role === "assistant");
     });
     return { results: index?.search(query.trim()) ?? [] };
   });

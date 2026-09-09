@@ -52,12 +52,12 @@ describe("SessionIndex（SQLite 索引层）", () => {
 
   it("drop 文件重建实例后为空，rebuild 后恢复一致", () => {
     let index = new SessionIndex(dbPath);
-    index.rebuild([summary("a")]);
+    index.rebuild([summary("a")], (id) => [{ idx: 0, role: "user", text: "x" }]);
     index.close();
     fs.rmSync(dbPath);
     index = new SessionIndex(dbPath);
     expect(index.count()).toBe(0);
-    index.rebuild([summary("a")]);
+    index.rebuild([summary("a")], (id) => [{ idx: 0, role: "user", text: "x" }]);
     expect(index.list().map((s) => s.id)).toEqual(["a"]);
     index.close();
   });
@@ -77,7 +77,12 @@ describe("SessionIndex.search（P2 会话全文搜索）", () => {
   it("rebuild 含文本 → LIKE 命中用户/助手文本、转义与无结果", () => {
     const index = new SessionIndex(dbPath);
     index.rebuild([summary("a", { title: "修复除零" }), summary("b")], (id) =>
-      id === "a" ? ["修复 utils.py 的除零 bug", "已把 a - b 改成 a + b 并跑通测试"] : ["无关会话内容"],
+      id === "a"
+        ? [
+            { idx: 0, role: "user", text: "修复 utils.py 的除零 bug" },
+            { idx: 1, role: "assistant", text: "已把 a - b 改成 a + b 并跑通测试" },
+          ]
+        : [{ idx: 0, role: "user", text: "无关会话内容" }],
     );
 
     expect(index.search("除零").map((h) => h.sessionId)).toEqual(["a"]);
@@ -94,7 +99,7 @@ describe("SessionIndex.search（P2 会话全文搜索）", () => {
 
   it("rebuild 未提供 loadTexts 时 messages 表为空、search 返回空", () => {
     const index = new SessionIndex(dbPath);
-    index.rebuild([summary("a")]);
+    index.rebuild([summary("a")], (id) => [{ idx: 0, role: "user", text: "x" }]);
     expect(index.search("任意")).toEqual([]);
     index.close();
   });
@@ -110,13 +115,13 @@ it("撕裂行 JSONL 不污染索引（P2-T1 直测：经上游 load 的容忍）
 
   const index = new SessionIndex(dbPath);
   const sessions = mgr.list();
-  const texts = new Map<string, string[]>();
+  const texts = new Map<string, Array<{ idx: number; role: string; text: string }>>();
   for (const s of sessions) {
     texts.set(
       s.id,
       (mgr.load(s.id)?.messages ?? [])
         .filter((m: { role?: string }) => m.role === "user" || m.role === "assistant")
-        .map((m) => JSON.stringify((m as { content?: unknown }).content ?? "")),
+        .map((m, i) => ({ idx: i, role: String(m.role), text: JSON.stringify((m as { content?: unknown }).content ?? "") })),
     );
   }
   index.rebuild(sessions, (sid) => texts.get(sid) ?? []);
