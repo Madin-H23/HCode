@@ -12,6 +12,8 @@ export interface ChatMessage {
   role: "user" | "assistant";
   text: string;
   streaming: boolean;
+  /** 会话全量消息数组中的原始下标（attach 恢复时赋值；实时流消息无）。 */
+  origIdx?: number;
 }
 
 export interface ToolCard {

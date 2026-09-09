@@ -4,8 +4,6 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createHarnessBridge, type HarnessBridge, type WorkspacePickResult } from "./bridge";
 import { armDebugMockScript } from "./test-hooks";
-
-
 import { SessionManager } from "../../../src/session/manager.js";
 import { sessionsDir } from "../../../src/config/loader.js";
 import { textOf } from "../renderer/src/chat";
@@ -120,8 +118,8 @@ function registerIpc(): void {
       const loaded = new SessionManager(sessionsDir()).load(id);
       const messages = loaded ? loaded.messages : [];
       return messages
-        .map((m, idx) => ({ idx, role: String(m.role), text: textOf(m) }))
-        .filter((m) => m.role === "user" || m.role === "assistant");
+        .filter((m) => m.role === "user" || m.role === "assistant")
+        .map((m, k) => ({ idx: k, role: m.role, text: textOf(m) }));
     });
     return { results: index?.search(query.trim()) ?? [] };
   });
@@ -178,8 +176,8 @@ function registerIpc(): void {
     if (!summary) throw new Error(`找不到会话：${id}`);
     await startSession(summary.cwd, { mode: "attach", id });
     const history = (bridge?.harness.runtime.agent.state.messages ?? [])
-      .filter((m) => m.role === "user" || m.role === "assistant")
-      .map((m) => ({ role: m.role as "user" | "assistant", text: textOf(m) }));
+      .map((m, idx) => ({ origIdx: idx, role: m.role as "user" | "assistant", text: textOf(m) }))
+      .filter((m) => m.role === "user" || m.role === "assistant");
     return { ok: true as const, projectRoot: summary.cwd, history };
   });
 

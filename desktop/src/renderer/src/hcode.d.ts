@@ -26,7 +26,7 @@ export interface HcodeApi {
   attachSession(id: string): Promise<{
     ok: boolean;
     projectRoot: string;
-    history: Array<{ role: 'user' | 'assistant'; text: string }>;
+    history: Array<{ origIdx: number; role: 'user' | 'assistant'; text: string }>;
   }>;
   respondPermission(id: number, outcome: PromptOutcome): Promise<void>;
   listModels(): Promise<ModelInfo[]>;

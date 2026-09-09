@@ -41,7 +41,7 @@ const api = {
   ): Promise<{
     ok: boolean
     projectRoot: string
-    history: Array<{ role: 'user' | 'assistant'; text: string }>
+    history: Array<{ origIdx: number; role: 'user' | 'assistant'; text: string }>
   }> => ipcRenderer.invoke("hcode/session/attach", id),
   respondPermission: (id: number, outcome: PromptOutcome): Promise<void> =>
     ipcRenderer.invoke("hcode/permission/respond", { id, outcome }),

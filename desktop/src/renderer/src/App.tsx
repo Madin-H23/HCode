@@ -74,6 +74,7 @@ export default function App() {
   const [agentsOpen, setAgentsOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
   const [searchResults, setSearchResults] = useState<SearchHit[] | null>(null)
+  const [highlightMsgIdx, setHighlightMsgIdx] = useState<number | null>(null)
   const chatRef = useRef<ChatState>(initialChatState)
   const messagesRef = useRef<HTMLDivElement>(null)
 
@@ -315,14 +316,12 @@ export default function App() {
   const openSearchHit = (hit: SearchHit): void => {
     setSearchResults(null)
     setSearchQuery("")
-    attachSession(hit.sessionId)
+    attachSession(hit.sessionId, hit.msgIdx)
   }
 
-  const attachSession = (id: string): void => {
+  const attachSession = (id: string, highlightMsgIdx?: number): void => {
     if (!id) return
     setError(null)
-    setSearchResults(null)
-    setSearchQuery("")
     void window.hcode
       .attachSession(id)
       .then((r) => {
@@ -337,6 +336,7 @@ export default function App() {
         chatRef.current = { items: historyItems, nextId: historyItems.length + 1 }
         setItems(historyItems)
         loadSessions()
+        if (highlightMsgIdx != null) setHighlightMsgIdx(highlightMsgIdx)
       })
       .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)))
   }
@@ -534,6 +534,9 @@ export default function App() {
                 key={item.id}
                 data-testid={`msg-${item.role}`}
                 data-streaming={item.streaming ? "true" : "false"}
+                data-highlight={
+                  highlightMsgIdx != null && item.origIdx === highlightMsgIdx ? "true" : "false"
+                }
                 className={`bubble ${item.role === "user" ? "bubble-user" : "bubble-assistant"}`}
               >
                 {item.text}

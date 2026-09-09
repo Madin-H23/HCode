@@ -217,3 +217,15 @@ button { font-family: inherit; }
 .panel-static { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
 .panel-static .ok { color: var(--ok); }
 .dot.idle-empty { background: var(--faint); }
+
+/* ── 搜索命中高亮 ──────────────────────────────────────────── */
+.bubble[data-highlight="true"] {
+  border: 2px solid var(--ember);
+  box-shadow: 0 0 0 3px rgba(232, 134, 60, 0.25);
+}
+
+/* ── 搜索命中高亮 ──────────────────────────────────────────── */
+.bubble[data-highlight="true"] {
+  border: 2px solid var(--ember);
+  box-shadow: 0 0 0 3px rgba(232, 134, 60, 0.25);
+}
