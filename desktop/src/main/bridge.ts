@@ -160,6 +160,8 @@ export async function createHarnessBridge(
   });
 
   let subagentsMax = 3;
+  // 当前生效的 SubAgentManager（applySubagentMax 替换后指向新实例；dispose 时需收口它）
+  let activeSubAgents: SubAgentManager | undefined;
   const applySubagentMax = (max: number): void => {
     const clamped = Math.min(5, Math.max(1, Math.floor(max) || 3));
     const workerTools = ["read", "grep", "find", "ls"]
@@ -179,6 +181,7 @@ export async function createHarnessBridge(
       ...createSubAgentTools(mgr),
     ];
     harness.subAgents = mgr;
+    activeSubAgents = mgr;
     subagentsMax = clamped;
   };
   applySubagentMax(3);
@@ -303,7 +306,9 @@ export async function createHarnessBridge(
     dispose(): Promise<void> {
       for (const resolve of pendingPermissions.values()) resolve("deny");
       pendingPermissions.clear();
-      return harness.shutdown();
+      // 替换后的 manager 不在 bootstrap shutdown 闭包内，需显式收口
+      const workers = activeSubAgents?.shutdown();
+      return workers ? workers.then(() => harness.shutdown()) : harness.shutdown();
     },
   };
 }
